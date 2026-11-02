@@ -1,5 +1,6 @@
 """启动：python app.py；接口文档：http://127.0.0.1:5000/docs。"""
 
+import codecs
 import io
 import json
 import os
@@ -9,6 +10,8 @@ from typing import Annotated
 
 import uvicorn
 from docx import Document
+from docx.oxml.ns import qn
+from docx.table import Table
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
@@ -25,7 +28,7 @@ MAX_FILE_BYTES = 8 * 1024 * 1024
 MAX_RESUME_CHARS = 40_000
 MAX_JOB_CHARS = 12_000
 
-app = FastAPI(title="简历透镜 · AI 简历分析", version="1.0.1",
+app = FastAPI(title="简历透镜 · AI 简历分析", version="1.1.0",
               description="上传简历或粘贴文本，进行本地关键词分析或大模型深度分析。")
 app.mount("/static", StaticFiles(directory=ROOT / "static"), name="static")
 
@@ -48,6 +51,16 @@ def extract_text(filename: str, data: bytes) -> str:
         raise ValueError("文件不能超过 8 MB。")
     try:
         if extension == ".txt":
+            for bom, encoding in ((codecs.BOM_UTF32_LE, "utf-32"), (codecs.BOM_UTF32_BE, "utf-32"),
+                                  (codecs.BOM_UTF16_LE, "utf-16"), (codecs.BOM_UTF16_BE, "utf-16")):
+                if data.startswith(bom):
+                    return data.decode(encoding)
+            # Windows 导出的无 BOM UTF-16 通常在 ASCII 一侧有连续的空字节。
+            if len(data) % 2 == 0 and b"\x00" in data:
+                for offset, encoding in ((1, "utf-16-le"), (0, "utf-16-be")):
+                    sample = data[offset:1024:2]
+                    if sample and sample.count(0) / len(sample) > .3:
+                        return data.decode(encoding)
             try:
                 return data.decode("utf-8-sig")
             except UnicodeDecodeError:
@@ -66,10 +79,40 @@ def extract_text(filename: str, data: bytes) -> str:
             if len(archive.infolist()) > 2000 or sum(info.file_size for info in archive.infolist()) > 30 * 1024 * 1024:
                 raise ValueError("DOCX 解压后内容过大，请精简文件。")
         document = Document(io.BytesIO(data))
-        parts = [paragraph.text for paragraph in document.paragraphs]
-        parts.extend(" | ".join(cell.text for cell in row.cells)
-                     for table in document.tables for row in table.rows)
+
+        def block_texts(container):
+            for block in container.iter_inner_content():
+                if isinstance(block, Table):
+                    seen_cells = set()
+                    for row in block.rows:
+                        cells = []
+                        for cell in row.cells:
+                            if cell._tc not in seen_cells:
+                                seen_cells.add(cell._tc)
+                                cells.append("\n".join(block_texts(cell)))
+                        yield " | ".join(cells)
+                else:
+                    yield block.text
+
+        parts, seen_headers = [], set()
+        for section in document.sections:
+            for header in (section.header, section.first_page_header, section.even_page_header):
+                if header._element not in seen_headers:
+                    seen_headers.add(header._element)
+                    parts.extend(block_texts(header))
+        parts.extend(block_texts(document))
+        for section in document.sections:
+            for footer in (section.footer, section.first_page_footer, section.even_page_footer):
+                if footer._element not in seen_headers:
+                    seen_headers.add(footer._element)
+                    parts.extend(block_texts(footer))
+        # 侧栏模板常将联系方式放进文本框，python-docx 的 paragraph.text 不含这部分。
+        for textbox in document.element.iter(qn("w:txbxContent")):
+            parts.extend("".join(node.text or "" for node in paragraph.iter(qn("w:t")))
+                         for paragraph in textbox.iter(qn("w:p")))
         return "\n".join(parts)
+    except UnicodeError:
+        raise ValueError("TXT 编码无法识别，请另存为 UTF-8 后上传，或直接粘贴文本。") from None
     except ValueError:
         raise
     except Exception:

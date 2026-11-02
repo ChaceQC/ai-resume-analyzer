@@ -12,6 +12,7 @@ let currentReport = null;
 let aiAvailable = false;
 let busy = false;
 let toastTimer;
+let droppedFile = null;
 
 function toast(message) {
   $("toast").textContent = message;
@@ -36,14 +37,14 @@ $("resume-text").addEventListener("input", () => {
 });
 
 function updateFile() {
-  const file = $("resume-file").files[0];
+  const file = droppedFile || $("resume-file").files[0];
   $("file-label").textContent = file ? file.name : "点击上传，或将文件拖到这里";
   $("file-hint").textContent = file ? "文件已选择，准备好后开始分析" : "支持 PDF、DOCX、TXT · 最大 8 MB";
   $("file-actions").hidden = !file;
   $("file-size").textContent = file ? `${(file.size / 1024).toFixed(1)} KB` : "";
 }
-$("resume-file").addEventListener("change", updateFile);
-$("clear-file").addEventListener("click", () => { $("resume-file").value = ""; updateFile(); });
+$("resume-file").addEventListener("change", () => { droppedFile = null; updateFile(); });
+$("clear-file").addEventListener("click", () => { droppedFile = null; $("resume-file").value = ""; updateFile(); });
 for (const eventName of ["dragenter", "dragover"]) {
   $("drop-zone").addEventListener(eventName, (event) => {
     event.preventDefault();
@@ -58,9 +59,7 @@ for (const eventName of ["dragleave", "drop"]) {
 }
 $("drop-zone").addEventListener("drop", (event) => {
   if (busy || !event.dataTransfer.files.length) return;
-  const transfer = new DataTransfer();
-  transfer.items.add(event.dataTransfer.files[0]);
-  $("resume-file").files = transfer.files;
+  droppedFile = event.dataTransfer.files[0];
   updateFile();
 });
 
@@ -84,11 +83,21 @@ async function loadSample() {
 }
 $("sample-button").addEventListener("click", loadSample);
 $("sidebar-sample").addEventListener("click", loadSample);
-$("guide-button").addEventListener("click", () => $("guide-dialog").showModal());
+function closeGuide() {
+  const dialog = $("guide-dialog");
+  if (typeof dialog.close === "function") dialog.close();
+  else dialog.removeAttribute("open");
+}
+$("guide-button").addEventListener("click", () => {
+  const dialog = $("guide-dialog");
+  if (typeof dialog.showModal === "function") dialog.showModal();
+  else dialog.setAttribute("open", "");
+});
+$("guide-dialog").querySelector("form").addEventListener("submit", (event) => { event.preventDefault(); closeGuide(); });
 $("guide-dialog").addEventListener("click", (event) => {
   if (event.target === $("guide-dialog")) {
     const bounds = $("guide-dialog").getBoundingClientRect();
-    if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) $("guide-dialog").close();
+    if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) closeGuide();
   }
 });
 $("use-ai").addEventListener("change", () => { $("ai-privacy").hidden = !$("use-ai").checked; });
@@ -180,34 +189,44 @@ function renderReport(report) {
 
 async function readAnalysis(response, onActivity) {
   if (!response.ok) {
-    const data = await response.json();
-    throw new Error(typeof data.detail === "string" ? data.detail : "输入内容不正确，请检查后重试。");
+    let data;
+    try { data = await response.json(); } catch { throw new Error(`分析服务返回异常（${response.status}），请稍后重试。`); }
+    throw new Error(typeof data?.detail === "string" ? data.detail : "输入内容不正确，请检查后重试。");
   }
-  if (!response.headers.get("content-type")?.includes("text/event-stream")) return response.json();
+  if (!response.headers.get("content-type")?.toLowerCase().includes("text/event-stream")) return response.json();
+  if (!response.body || typeof response.body.getReader !== "function") throw new Error("浏览器暂不支持实时读取，请刷新后重试。");
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+  const processFrame = (frame) => {
+    const payload = frame.split(/\r\n|\r|\n/).filter((line) => line.startsWith("data:")).map((line) => line.slice(5).replace(/^ /, "")).join("\n");
+    if (!payload) return null;
+    const event = JSON.parse(payload);
+    if (event.type === "error") throw new Error(event.message);
+    if (event.type === "status") $("loading-description").textContent = event.message;
+    if (event.type === "summary") {
+      $("stream-preview").hidden = false;
+      $("stream-summary").textContent = event.text;
+      $("loading-description").textContent = "正在整理详细评估与优化建议……";
+    }
+    return event.type === "complete" ? event.report : null;
+  };
   try {
     while (true) {
       const { value, done } = await reader.read();
-      if (done) break;
-      onActivity();
-      buffer += decoder.decode(value, { stream: true });
+      if (!done) onActivity();
+      buffer += done ? decoder.decode() : decoder.decode(value, { stream: true });
       let boundary;
-      while ((boundary = buffer.indexOf("\n\n")) !== -1) {
-        const frame = buffer.slice(0, boundary);
-        buffer = buffer.slice(boundary + 2);
-        const payload = frame.split("\n").filter((line) => line.startsWith("data:")).map((line) => line.slice(5).trimStart()).join("\n");
-        if (!payload) continue;
-        const event = JSON.parse(payload);
-        if (event.type === "error") throw new Error(event.message);
-        if (event.type === "status") $("loading-description").textContent = event.message;
-        if (event.type === "summary") {
-          $("stream-preview").hidden = false;
-          $("stream-summary").textContent = event.text;
-          $("loading-description").textContent = "正在整理详细评估与优化建议……";
-        }
-        if (event.type === "complete") return event.report;
+      while ((boundary = /\r\n\r\n|\n\n|\r\r/.exec(buffer)) !== null) {
+        const frame = buffer.slice(0, boundary.index);
+        buffer = buffer.slice(boundary.index + boundary[0].length);
+        const report = processFrame(frame);
+        if (report) return report;
+      }
+      if (done) {
+        const report = processFrame(buffer);
+        if (report) return report;
+        break;
       }
     }
     throw new Error("分析连接已中断，请稍后重试。");
@@ -222,7 +241,7 @@ $("analysis-form").addEventListener("submit", async (event) => {
   $("error-message").hidden = true;
   const form = new FormData();
   if (inputMode === "upload") {
-    const file = $("resume-file").files[0];
+    const file = droppedFile || $("resume-file").files[0];
     if (!file) { toast("请先上传简历，或切换到粘贴文本"); return; }
     if (!/\.(pdf|docx|txt)$/i.test(file.name)) { toast("请选择 PDF、DOCX 或 TXT 文件"); return; }
     if (file.size > 8 * 1024 * 1024) { toast("文件不能超过 8 MB"); return; }
@@ -235,7 +254,7 @@ $("analysis-form").addEventListener("submit", async (event) => {
   form.append("job_description", $("job-description").value);
   form.append("use_ai", String($("use-ai").checked));
   const useAI = $("use-ai").checked;
-  form.append("stream", String(useAI));
+  form.append("stream", String(useAI && typeof ReadableStream !== "undefined" && typeof TextDecoder !== "undefined"));
   $("stream-preview").hidden = true;
   $("stream-summary").textContent = "";
   $("loading-description").textContent = useAI ? "正在评估岗位契合度与项目经历，通常需要 10—60 秒……" : "正在整理技能与改进建议……";
@@ -266,7 +285,7 @@ $("analysis-form").addEventListener("submit", async (event) => {
 
 function markdown(report) {
   const lines = ["# 简历分析报告", "", `分析方式：${report.source === "ai" ? "AI 深度分析" : "基础分析"}`,
-    `简历参考分：${report.overall_score}/100`, `岗位匹配：${report.job_match_score === null ? "未评估" : report.job_match_score + "%"}（${report.source === "ai" ? "AI 综合评估" : "关键词覆盖率"}）`, "", report.summary,
+    `简历参考分：${report.overall_score}/100`, "评分侧重实践依据与成果：60—74 基本合格，75—84 较好，85—89 优秀，90 分以上需充分证据。", `岗位匹配：${report.job_match_score === null ? "未评估" : report.job_match_score + "%"}（${report.source === "ai" ? "AI 综合评估" : "关键词覆盖率"}）`, "", report.summary,
     "", "## 基本信息", ...Object.entries(report.profile).map(([key, value]) => `- ${{name:"姓名",education:"学历",email:"邮箱",phone:"电话"}[key]}：${value}`),
     "", "## 多维评估", ...report.dimensions.map((v) => `- ${v.label}：${v.score}/100。${v.detail}`),
     "", "## 技能关键词", `已识别：${report.skills.join("、") || "无"}`, `岗位已覆盖：${report.matched_skills.join("、") || "无"}`, `岗位未检索到：${report.missing_skills.join("、") || "无"}`,

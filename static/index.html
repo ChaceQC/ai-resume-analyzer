@@ -7,8 +7,8 @@
   <meta name="description" content="上传简历、匹配目标岗位，获得清晰可执行的简历优化建议。">
   <title>简历透镜 · AI 简历分析</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='12' fill='%23123d36'/%3E%3Cpath d='M12 10h12l5 5v15H12z' stroke='%23b8e6c9' fill='none' stroke-width='2'/%3E%3Cpath d='M17 20h7m-7 5h5' stroke='%23b8e6c9' stroke-width='2'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="/static/style.css?v=1.0.1">
-  <script src="/static/app.js?v=1.0.1" defer></script>
+  <link rel="stylesheet" href="/static/style.css?v=1.1.0">
+  <script src="/static/app.js?v=1.1.0" defer></script>
 </head>
 <body>
   <svg class="icon-definitions" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -76,7 +76,7 @@
 
           <section id="report" aria-live="polite" hidden>
             <div class="card result-overview"><div class="result-heading"><div><span class="eyebrow">YOUR RESUME INSIGHTS</span><h2>简历分析报告 <span class="source-badge" id="report-source"></span></h2></div><div class="export-buttons"><button class="button button-outline button-small" type="button" id="export-md"><svg><use href="#i-download"/></svg>下载报告</button></div></div><div class="score-summary"><div class="score-ring" id="score-ring"><div><strong id="overall-score">0</strong><span>简历参考分</span></div></div><div class="summary-content"><div class="match-line">岗位匹配 <strong id="match-score">—</strong><span id="match-kind"></span></div><p id="report-summary"></p></div></div><div class="profile-row" id="profile-row"></div></div>
-            <div class="card report-section"><div class="section-heading"><h3>多维质量评估</h3><span>找到值得打磨的细节</span></div><div id="dimensions" class="dimensions"></div></div>
+            <div class="card report-section"><div class="section-heading"><h3>多维质量评估</h3><span>找到值得打磨的细节</span></div><div id="dimensions" class="dimensions"></div><p class="section-note">评分侧重实践依据与成果：60—74 基本合格，75—84 较好，85—89 优秀，90 分以上需充分证据。岗位关键词覆盖率单独展示。</p></div>
             <div class="card report-section"><div class="section-heading"><h3>技能与岗位匹配</h3></div><h4>简历中识别到的技能</h4><div id="skills" class="chips"></div><div id="job-skills"><h4>已覆盖的岗位关键词 <span class="legend-dot green"></span></h4><div id="matched-skills" class="chips"></div><h4>尚未检索到的岗位关键词 <span class="legend-dot amber"></span></h4><div id="missing-skills" class="chips"></div></div><p class="section-note">请结合岗位要求和真实经历核对，技能匹配不代表实际熟练程度。</p></div>
             <div class="card report-section"><div class="section-heading"><h3>值得保留的优势</h3><span class="green-text">KEEP GOING</span></div><ul id="strengths" class="strength-list"></ul></div>
             <div class="card report-section"><div class="section-heading"><h3>下一步，优先优化这些</h3><span>具体建议，更容易行动</span></div><div id="suggestions" class="suggestions"></div></div>
