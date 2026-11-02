@@ -1,0 +1,12 @@
+Python 后端开发工程师
+
+岗位职责：
+1. 使用 Python、FastAPI 开发和维护业务接口。
+2. 参与 MySQL 数据库设计、SQL 优化和 Redis 缓存方案落地。
+3. 维护自动化测试，使用 Docker、Linux 完成服务部署。
+
+任职要求：
+1. 熟悉 Python，掌握 FastAPI 或 Django。
+2. 熟悉 MySQL、Redis、Git，了解 REST API 设计。
+3. 了解 Kubernetes 和消息队列，有 CI/CD 实践经验。
+4. 有清晰的问题分析能力，能够说明项目中的个人贡献和实际效果。

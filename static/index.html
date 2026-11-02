@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#123d36">
+  <meta name="description" content="上传简历、匹配目标岗位，获得清晰可执行的简历优化建议。">
+  <title>简历透镜 · AI 简历分析</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='12' fill='%23123d36'/%3E%3Cpath d='M12 10h12l5 5v15H12z' stroke='%23b8e6c9' fill='none' stroke-width='2'/%3E%3Cpath d='M17 20h7m-7 5h5' stroke='%23b8e6c9' stroke-width='2'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/static/style.css?v=1.0.1">
+  <script src="/static/app.js?v=1.0.1" defer></script>
+</head>
+<body>
+  <svg class="icon-definitions" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <symbol id="i-document" viewBox="0 0 24 24"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8zM14 3v5h5M9 12h6M9 16h4"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24"><path d="m12 3 2.6 6.4L21 12l-6.4 2.6L12 21l-2.6-6.4L3 12l6.4-2.6zM20 2v4M18 4h4"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V3m-5 5 5-5 5 5M4 16v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M4 12h16m-6-6 6 6-6 6"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v13m-5-5 5 5 5-5M4 17v4h16v-4"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M12 5c-3-2-6-2-10-1v15c4-1 7-1 10 1 3-2 6-2 10-1V4c-4-1-7-1-10 1zm0 0v15"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3m-4 5v2"/></symbol>
+  </svg>
+
+  <aside class="sidebar">
+    <a class="brand" href="/" aria-label="简历透镜首页">
+      <span class="brand-mark"><svg><use href="#i-document"/></svg></span>
+      <span>简历透镜<small>RESUME LENS</small></span>
+    </a>
+    <div class="nav-label">求职工作台</div>
+    <nav aria-label="主导航">
+      <a class="nav-item active" href="#workspace" aria-current="page"><svg><use href="#i-spark"/></svg>简历分析<span class="nav-dot"></span></a>
+      <button class="nav-item" id="sidebar-sample"><svg><use href="#i-document"/></svg>体验示例</button>
+      <button class="nav-item" id="guide-button"><svg><use href="#i-book"/></svg>使用指南</button>
+    </nav>
+    <div class="sidebar-note"><span class="tiny-star">✦</span><h3>好经历，值得被看见。</h3><p>从一份更清晰的简历开始，<br>向理想的工作再近一步。</p><span class="note-line"></span></div>
+  </aside>
+
+  <main id="workspace">
+    <header class="topbar"><div class="breadcrumb">工作空间 <span>/</span> <strong>简历分析</strong></div><span class="status-pill" id="service-status"><i></i>正在连接服务</span></header>
+    <div class="page-content">
+      <section class="hero">
+        <div><div class="eyebrow"><span></span> YOUR NEXT CHAPTER STARTS HERE</div><h1>让你的经历，<span>更有说服力。</span></h1><p>看清简历的优势与不足，让每一次投递更有把握。</p></div>
+        <button class="button button-outline sample-button" id="sample-button"><svg><use href="#i-spark"/></svg>用示例体验<svg class="small-icon"><use href="#i-arrow"/></svg></button>
+      </section>
+
+      <div class="workspace-grid">
+        <section class="card input-card" aria-labelledby="input-title">
+          <div class="card-heading"><div class="heading-icon"><svg><use href="#i-document"/></svg></div><div><h2 id="input-title">开始简历分析</h2><p>添加简历，发现新的优化空间</p></div><span class="step-tag">STEP 01</span></div>
+          <form id="analysis-form">
+            <div class="input-tabs" role="tablist" aria-label="简历输入方式"><button type="button" id="upload-tab" class="input-tab selected" role="tab" aria-selected="true" aria-controls="upload-panel">上传文件</button><button type="button" id="text-tab" class="input-tab" role="tab" aria-selected="false" aria-controls="text-panel">粘贴文本</button></div>
+            <div id="upload-panel" role="tabpanel" aria-labelledby="upload-tab">
+              <label class="upload-zone" id="drop-zone" for="resume-file"><span class="upload-icon"><svg><use href="#i-upload"/></svg></span><strong id="file-label">点击上传，或将文件拖到这里</strong><span id="file-hint">支持 PDF、DOCX、TXT · 最大 8 MB</span><span class="file-types"><b>PDF</b><b>DOCX</b><b>TXT</b></span><input id="resume-file" name="file" type="file" accept=".pdf,.docx,.txt"></label>
+              <div class="file-actions" id="file-actions" hidden><span id="file-size"></span><button type="button" id="clear-file">移除文件</button></div>
+            </div>
+            <div id="text-panel" role="tabpanel" aria-labelledby="text-tab" hidden><label class="sr-only" for="resume-text">简历正文</label><textarea id="resume-text" rows="10" maxlength="40000" placeholder="在这里粘贴简历正文，包含教育背景、专业技能和项目经历……"></textarea><div class="field-meta"><span>至少 60 字符</span><span><b id="character-count">0</b> / 40,000</span></div></div>
+            <div class="field-heading"><label for="job-description">目标岗位描述</label><span>选填，匹配更准确</span></div>
+            <textarea id="job-description" rows="6" maxlength="12000" placeholder="粘贴目标岗位的职责和任职要求，了解哪些技能已覆盖、哪些内容值得补充。"></textarea>
+            <div class="analysis-mode" id="analysis-mode" hidden><div><strong>AI 深度分析</strong><p>结合岗位要求，深入评估经历与表达</p></div><label class="switch"><input type="checkbox" id="use-ai" disabled aria-label="启用 AI 深度分析"><span></span></label></div>
+            <button class="button button-primary" id="analyze-button" type="submit"><svg><use href="#i-spark"/></svg><span id="analyze-label">开始分析简历</span><svg class="button-arrow"><use href="#i-arrow"/></svg></button>
+            <p class="privacy-note"><svg><use href="#i-lock"/></svg>文件仅用于本次分析，不保存上传记录</p>
+            <p class="ai-privacy" id="ai-privacy" hidden>开启后，简历全文与岗位描述会发送至 AI 服务进行分析。</p>
+            <div class="error-message" id="error-message" role="alert" hidden></div>
+          </form>
+        </section>
+
+        <div class="report-column">
+          <section class="card empty-report" id="empty-state">
+            <div class="report-topline"><span><span class="small-dot"></span>你的简历洞察</span><span>等待分析</span></div>
+            <div class="empty-illustration" aria-hidden="true"><div class="paper-sheet"><div class="paper-avatar"></div><div class="paper-line short"></div><div class="paper-line"></div><div class="paper-rule"></div><div class="paper-line"></div><div class="paper-line medium"></div><div class="paper-line"></div><div class="paper-line short"></div></div><div class="illustration-badge"><svg><use href="#i-check"/></svg></div><span class="floating-star">✧</span></div>
+            <h2>下一份机会，从读懂简历开始</h2><p>上传你的简历，获得一份清晰、具体、<br>可以立刻行动的分析报告。</p>
+            <div class="report-features"><div><span>01</span><strong>多维评估</strong><p>发现内容与表达的提升空间</p></div><div><span>02</span><strong>岗位匹配</strong><p>对照要求，梳理技能覆盖</p></div><div><span>03</span><strong>行动建议</strong><p>从项目改写到面试准备</p></div></div>
+          </section>
+
+          <section class="card loading-report" id="loading-state" aria-live="polite" hidden><div class="loader"></div><h2>正在读懂你的经历</h2><p id="loading-description">正在整理技能与改进建议……</p><div class="stream-preview" id="stream-preview" hidden><span>你的简历评价</span><p id="stream-summary"></p></div><span>分析完成后，报告将展示在这里</span></section>
+
+          <section id="report" aria-live="polite" hidden>
+            <div class="card result-overview"><div class="result-heading"><div><span class="eyebrow">YOUR RESUME INSIGHTS</span><h2>简历分析报告 <span class="source-badge" id="report-source"></span></h2></div><div class="export-buttons"><button class="button button-outline button-small" type="button" id="export-md"><svg><use href="#i-download"/></svg>下载报告</button></div></div><div class="score-summary"><div class="score-ring" id="score-ring"><div><strong id="overall-score">0</strong><span>简历参考分</span></div></div><div class="summary-content"><div class="match-line">岗位匹配 <strong id="match-score">—</strong><span id="match-kind"></span></div><p id="report-summary"></p></div></div><div class="profile-row" id="profile-row"></div></div>
+            <div class="card report-section"><div class="section-heading"><h3>多维质量评估</h3><span>找到值得打磨的细节</span></div><div id="dimensions" class="dimensions"></div></div>
+            <div class="card report-section"><div class="section-heading"><h3>技能与岗位匹配</h3></div><h4>简历中识别到的技能</h4><div id="skills" class="chips"></div><div id="job-skills"><h4>已覆盖的岗位关键词 <span class="legend-dot green"></span></h4><div id="matched-skills" class="chips"></div><h4>尚未检索到的岗位关键词 <span class="legend-dot amber"></span></h4><div id="missing-skills" class="chips"></div></div><p class="section-note">请结合岗位要求和真实经历核对，技能匹配不代表实际熟练程度。</p></div>
+            <div class="card report-section"><div class="section-heading"><h3>值得保留的优势</h3><span class="green-text">KEEP GOING</span></div><ul id="strengths" class="strength-list"></ul></div>
+            <div class="card report-section"><div class="section-heading"><h3>下一步，优先优化这些</h3><span>具体建议，更容易行动</span></div><div id="suggestions" class="suggestions"></div></div>
+            <div class="card report-section" id="rewrites-section"><div class="section-heading"><h3>让项目描述更有说服力</h3><span>改写参考</span></div><div id="rewrites" class="rewrites"></div><p class="section-note">方括号中的内容需替换为你的真实经历与数据。</p></div>
+            <div class="card report-section"><div class="section-heading"><h3>提前准备的面试问题</h3><span>从简历延伸到对话</span></div><ol id="interview-questions" class="question-list"></ol></div>
+            <p class="report-footnote" id="report-footnote"></p>
+          </section>
+
+          <div class="tip-card"><span>✦</span><div><strong>一个小建议</strong><p>简历不是经历的堆叠。用具体的行动和真实的结果，讲清楚你带来了什么改变。</p></div></div>
+        </div>
+      </div>
+      <footer>简历透镜 <span>·</span> 让每一段经历，都被认真看见。</footer>
+    </div>
+  </main>
+
+  <dialog id="guide-dialog"><form method="dialog"><button class="dialog-close" aria-label="关闭指南">×</button></form><span class="eyebrow">QUICK START</span><h2>三步，开始优化你的简历</h2><ol><li><strong>添加简历</strong><p>上传 PDF、DOCX 或 TXT，或直接粘贴简历正文。扫描件请先转成可复制的文字。</p></li><li><strong>提供目标岗位</strong><p>粘贴岗位职责与任职要求，查看哪些技能已经覆盖、哪些经历值得补充。</p></li><li><strong>分析并下载</strong><p>查看评分、修改建议与面试问题，下载报告，按建议完善简历。</p></li></ol></dialog>
+  <div id="toast" class="toast" role="status" hidden></div>
+</body>
+</html>
