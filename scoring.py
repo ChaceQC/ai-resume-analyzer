@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP
 
 
-VERSION = "3.0.0"
+VERSION = "3.0.1"
 DIMENSIONS = {"信息完整度": 10, "内容结构": 15, "技能呈现": 25, "成果表达": 35, "表达清晰度": 15}
 SECTIONS = {
     "education": r"教育背景|教育经历|学历|教育|education(?:al background)?|qualifications",
@@ -64,7 +64,7 @@ DEGREES = [(4, "博士", r"博士|\bph\.?d\b|doctorate"), (3, "硕士", r"硕士
            (2, "本科", r"本科|学士|bachelor|\bb\.?sc\b"), (1, "专科", r"大专|专科|associate.degree")]
 
 ROLES = {
-    "software": ("软件工程", r"后端|前端|软件|全栈|开发工程|software|backend|front.?end|full.?stack|platform engineer|site reliability"),
+    "software": ("软件工程", r"后端|前端|软件|全栈|开发工程|客户端|服务端|测试工程|运维|software|backend|front.?end|full.?stack|platform engineer|site reliability"),
     "data": ("数据与算法", r"数据|算法|机器学习|data |machine learning|research scientist|analytics"),
     "product": ("产品与运营", r"产品|运营|product |operations|program manager"),
     "sales": ("市场销售与客户", r"销售|市场|客户|sales|account executive|marketing|customer success|business development"),

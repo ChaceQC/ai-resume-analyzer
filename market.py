@@ -16,10 +16,23 @@ ROOT = Path(__file__).resolve().parent
 DEFAULT_SNAPSHOT = ROOT / "market_data" / "snapshot.json.gz"
 MIN_JOBS, MIN_COMPANIES = 30, 3
 MAX_SNAPSHOT_DAYS = 14
+CITY_NAMES = {"北京": "beijing", "上海": "shanghai", "深圳": "shenzhen", "广州": "guangzhou",
+              "杭州": "hangzhou", "成都": "chengdu", "武汉": "wuhan", "西安": "xi'an|xian",
+              "南京": "nanjing", "苏州": "suzhou", "天津": "tianjin", "重庆": "chongqing",
+              "长沙": "changsha", "合肥": "hefei", "厦门": "xiamen", "珠海": "zhuhai",
+              "郑州": "zhengzhou", "佛山": "foshan", "昆明": "kunming", "济南": "jinan",
+              "大连": "dalian", "东莞": "dongguan", "拉萨": "lhasa", "洛阳": "luoyang",
+              "沈阳": "shenyang", "西宁": "xining", "呼和浩特": "hohhot", "石家庄": "shijiazhuang",
+              "揭阳": "jieyang", "贵阳": "guiyang", "黄石": "huangshi", "烟台": "yantai",
+              "南宁": "nanning", "中山": "zhongshan", "无锡": "wuxi", "青岛": "qingdao", "惠州": "huizhou"}
 
 
 def role_for_title(title: str) -> str:
+    if re.search(r"算法|大模型|机器学习|人工智能|计算机视觉|自然语言", title):
+        return "data"
     for key in ("engineering", "healthcare", "design", "finance", "people", "data", "software", "sales", "product"):
+        if key == "software" and re.search(r"研发|程序|客户端|服务端|测试工程|运维|安全工程|数据库|计算工程", title):
+            return key
         if re.search(ROLES[key][1], title, re.I):
             return key
     return ""
@@ -28,7 +41,8 @@ def role_for_title(title: str) -> str:
 def level_for_title(title: str) -> str:
     if re.search(r"intern|graduate|new grad|early career|实习|校招", title, re.I):
         return "graduate"
-    if re.search(r"manager|director|head of|vice president|\bvp\b|经理|总监", title, re.I):
+    leadership = re.sub(r"(?:product|project|program|account|customer success)\s+manager|(?:产品|项目|客户成功|客户)经理", "", title, flags=re.I)
+    if re.search(r"manager|director|head of|vice president|\bvp\b|经理|总监", leadership, re.I):
         return "manager"
     if re.search(r"senior|staff|principal|lead |资深|高级|专家", title, re.I):
         return "senior"
@@ -55,17 +69,41 @@ def load_snapshot(path=None) -> dict:
         return {}
 
 
-def status() -> dict:
+def select_jobs(snapshot: dict, context: dict) -> list[dict]:
+    return [entry for entry in snapshot.get("jobs", [])
+            if all(not context.get(key) or entry.get(key) == context[key] for key in ("industry", "role", "level"))
+            and (not context.get("city") or location_matches(entry.get("location", ""), context["city"]))]
+
+
+def status(context=None) -> dict:
     snapshot = load_snapshot()
+    context = context or {}
+    selected = select_jobs(snapshot, context)
+    selection = assess("", "", context, snapshot)
+    if selection["status"] == "needs_context":
+        selection.update(sample_count=len(selected), company_count=len({entry["company"] for entry in selected}))
+    regional = select_jobs(snapshot, dict(context, city=""))
+    regions = []
+    for city in ("中国", *CITY_NAMES):
+        matches = [entry for entry in regional if location_matches(entry["location"], city)]
+        if matches:
+            regions.append({"city": city, "jobs": len(matches), "companies": len({entry["company"] for entry in matches})})
     return {"available": bool(snapshot), "snapshot_id": snapshot.get("id"), "captured_at": snapshot.get("captured_at"),
             "scope": snapshot.get("scope"), "jobs": len(snapshot.get("jobs", [])),
             "companies": len({job.get("company") for job in snapshot.get("jobs", [])}),
-            "industries": INDUSTRIES, "roles": {key: value[0] for key, value in ROLES.items()}, "levels": LEVELS}
+            "industries": INDUSTRIES, "roles": {key: value[0] for key, value in ROLES.items()}, "levels": LEVELS,
+            "minimum_jobs": MIN_JOBS, "minimum_companies": MIN_COMPANIES, "regions": regions,
+            "selection": {key: selection[key] for key in ("status", "message", "sample_count", "company_count")}}
 
 
 def location_matches(location: str, requested: str) -> bool:
-    aliases = {"中国": r"china|中国|beijing|shanghai|shenzhen|hangzhou|guangzhou", "北京": "beijing|北京", "上海": "shanghai|上海",
-               "深圳": "shenzhen|深圳", "杭州": "hangzhou|杭州", "广州": "guangzhou|广州", "香港": "hong kong|香港",
+    requested = requested.strip().casefold()
+    for city, english in CITY_NAMES.items():
+        if requested in (city, city + "市", *english.split("|")):
+            return bool(re.search(city + r"|\b(?:" + english + r")\b", location, re.I))
+    domestic = "|".join(CITY_NAMES) + r"|\b(?:" + "|".join(CITY_NAMES.values()) + r")\b"
+    aliases = {"中国": r"\bchina\b|中国|" + domestic, "中国大陆": r"\bchina\b|中国|" + domestic,
+               "china": r"\bchina\b|中国|" + domestic, "香港": "hong kong|香港",
                "美国": "united states|usa|new york|san francisco|austin|seattle|美国", "新加坡": "singapore|新加坡"}
     return bool(re.search(aliases.get(requested, re.escape(requested)), location, re.I))
 
@@ -93,9 +131,7 @@ def assess(text: str, job: str, context: dict, snapshot=None, now=None) -> dict:
     if not all(context.get(key) for key in ("industry", "role", "level")):
         result.update(status="needs_context", message="选择目标行业、岗位族和职级后，可对照同类招聘样本。")
         return result
-    selected = [entry for entry in snapshot["jobs"] if entry.get("industry") == context["industry"]
-                and entry.get("role") == context["role"] and entry.get("level") == context["level"]
-                and (not context.get("city") or location_matches(entry.get("location", ""), context["city"]))]
+    selected = select_jobs(snapshot, context)
     companies = {entry["company"] for entry in selected}
     result.update(sample_count=len(selected), company_count=len(companies))
     if len(selected) < MIN_JOBS or len(companies) < MIN_COMPANIES:

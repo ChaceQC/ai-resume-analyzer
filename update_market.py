@@ -15,7 +15,7 @@ from urllib.parse import urlsplit
 import httpx
 
 from market import DEFAULT_SNAPSHOT, level_for_title, role_for_title
-from scoring import VERSION, fingerprint, normalize, positive_mentions
+from scoring import LEVELS, VERSION, fingerprint, normalize, positive_mentions
 
 
 BOARDS = {
@@ -78,10 +78,13 @@ def build_snapshot(entries: list[dict], sources: list[dict], captured_at: str) -
             updated = datetime.fromisoformat(entry["updated_at"])
             if updated.tzinfo is None or not now - timedelta(days=60) <= updated <= now + timedelta(hours=1):
                 continue
-            role, level = role_for_title(entry["title"]), level_for_title(entry["title"])
+            role = role_for_title(entry["title"])
+            level = entry.get("level") or level_for_title(entry["title"])
+            if level not in LEVELS:
+                continue
             if not role or urlsplit(entry["url"]).scheme != "https":
                 continue
-            group = (entry["company"], role, level)
+            group = (entry["company"], role, level, normalize(entry["location"]).casefold())
             if counts[group] >= 25:
                 continue
             content = plain_text(entry["content"])
@@ -101,8 +104,8 @@ def build_snapshot(entries: list[dict], sources: list[dict], captured_at: str) -
             continue
     source_names = {entry["company"] for entry in jobs}
     snapshot = {"schema_version": 1, "extractor_version": VERSION, "captured_at": captured_at,
-                "scope": "所列国际企业的公开招聘样本，按企业、岗位族和职级限额抽取；不代表全国或整个行业。",
-                "selection": "企业公开职位；最近60天更新；同企业/岗位族/职级最多25条；公司、职位、地点、要求去重。更新时间不等于首次发布时间。",
+                "scope": "所列国内与国际企业的公开招聘样本，按企业、岗位族、职级和工作地点限额抽取；不代表全国或整个行业。",
+                "selection": "企业公开职位；最近60天更新；同企业/岗位族/职级/工作地点最多25条；公司、职位、地点、要求去重。更新时间不等于首次发布时间。",
                 "sources": [source for source in sources if source["company"] in source_names],
                 "jobs": sorted(jobs, key=lambda entry: entry["id"])}
     snapshot["id"] = fingerprint(snapshot)
@@ -110,11 +113,12 @@ def build_snapshot(entries: list[dict], sources: list[dict], captured_at: str) -
 
 
 def main():
-    parser = argparse.ArgumentParser(description="从企业 Greenhouse 公开接口或标准 JSON 导入更新行情，分析请求不联网。")
+    parser = argparse.ArgumentParser(description="从国内企业官网、Greenhouse 公开接口或标准 JSON 更新行情，分析请求不联网。")
     parser.add_argument("--proxy", help="可选 HTTP 代理，仅用于本次更新")
     parser.add_argument("--output", type=Path, default=DEFAULT_SNAPSHOT)
     parser.add_argument("--cache-dir", type=Path, help="可选：读取/保存 resume-market-公司.json 原始接口响应，24小时内复用")
     parser.add_argument("--input", type=Path, help="导入包含 entries、sources、captured_at 的标准 JSON，字段见 README")
+    parser.add_argument("--sources", choices=("all", "domestic", "international"), default="all", help="默认同时采集国内与国际来源")
     args = parser.parse_args()
     if args.input:
         imported = json.loads(args.input.read_text(encoding="utf-8"))
@@ -146,11 +150,17 @@ def main():
                 print(f"{company}: 更新失败 ({type(exc).__name__})")
                 return [], None
         entries, sources = [], []
-        with ThreadPoolExecutor(max_workers=6) as pool:
-            for fetched_entries, source in pool.map(fetch, BOARDS):
-                entries.extend(fetched_entries)
-                if source:
-                    sources.append(source)
+        if args.sources != "domestic":
+            with ThreadPoolExecutor(max_workers=6) as pool:
+                for fetched_entries, source in pool.map(fetch, BOARDS):
+                    entries.extend(fetched_entries)
+                    if source:
+                        sources.append(source)
+        if args.sources != "international":
+            from market_sources import collect_domestic
+            domestic_entries, domestic_sources = collect_domestic(args.proxy, args.cache_dir)
+            entries.extend(domestic_entries)
+            sources.extend(domestic_sources)
         if not entries:
             raise SystemExit("没有获取到有效数据，保留原快照。")
         captured = min(source["captured_at"] for source in sources)

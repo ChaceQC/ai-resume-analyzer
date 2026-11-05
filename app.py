@@ -31,7 +31,7 @@ MAX_FILE_BYTES = 8 * 1024 * 1024
 MAX_RESUME_CHARS = 40_000
 MAX_JOB_CHARS = 12_000
 
-app = FastAPI(title="简历透镜 · AI 简历分析", version="3.0.0",
+app = FastAPI(title="简历透镜 · AI 简历分析", version="3.0.1",
               description="上传简历或粘贴文本，进行本地关键词分析或大模型深度分析。")
 app.mount("/static", StaticFiles(directory=ROOT / "static"), name="static")
 
@@ -141,8 +141,13 @@ def sample():
 
 
 @app.get("/api/market", summary="查看行情快照、覆盖范围与可选评估背景")
-def market_status():
-    return market.status()
+def market_status(industry: str = "", role: str = "", level: str = "", city: str = ""):
+    for value, options, label in ((industry, INDUSTRIES, "行业"), (role, ROLES, "岗位族"), (level, LEVELS, "职级")):
+        if value and value not in options:
+            raise HTTPException(400, f"无效的{label}选项。")
+    if len(city.strip()) > 80:
+        raise HTTPException(400, "目标地区不能超过 80 字符。")
+    return market.status({"industry": industry, "role": role, "level": level, "city": city.strip()})
 
 
 @app.get("/api/market/snapshot", summary="下载公开招聘样本、原文依据和来源链接")

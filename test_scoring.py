@@ -220,6 +220,46 @@ class MarketTests(unittest.TestCase):
         snapshot = build_snapshot([entry, dict(entry, id="duplicate"), old, bad], [{"company": "Example"}], now)
         self.assertEqual(len(snapshot["jobs"]), 1)
 
+    def test_city_quota_preserves_other_cities_and_explicit_campus_level(self):
+        now = datetime.now(timezone.utc).isoformat()
+        entries = [{"id": f"{city}-{index}", "company": "测试企业", "industry": "software",
+                    "title": f"Software Engineer {index}", "location": city, "level": "graduate",
+                    "url": f"https://example.org/{city}/{index}", "content": "任职要求\n熟悉 Python。", "updated_at": now}
+                   for city in ("北京", "上海") for index in range(30)]
+        snapshot = build_snapshot(entries, [{"company": "测试企业"}], now)
+        self.assertEqual(len(snapshot["jobs"]), 50)
+        self.assertEqual({job["location"] for job in snapshot["jobs"]}, {"北京", "上海"})
+        self.assertTrue(all(job["level"] == "graduate" for job in snapshot["jobs"]))
+
+    def test_coverage_preview_uses_the_same_strict_city_scope_as_assessment(self):
+        for job in self.snapshot["jobs"]:
+            job["location"] = "Shanghai, China"
+        with TestClient(app) as client, patch("market.load_snapshot", return_value=self.snapshot):
+            query = {"industry": "software", "role": "software", "level": "junior", "city": "上海市"}
+            available = client.get("/api/market", params=query).json()
+            self.assertEqual(available["selection"]["status"], "available")
+            self.assertEqual(available["selection"]["sample_count"], 30)
+            self.assertEqual(available["selection"]["company_count"], 3)
+            self.assertIn({"city": "上海", "jobs": 30, "companies": 3}, available["regions"])
+            query["city"] = "深圳"
+            missing = client.get("/api/market", params=query).json()
+            self.assertEqual(missing["selection"]["status"], "insufficient")
+            self.assertEqual(missing["selection"]["sample_count"], 0)
+            self.assertEqual(market.assess(self.resume, "", query, self.snapshot)["sample_count"], 0)
+            self.assertEqual(client.get("/api/market?industry=invalid").status_code, 400)
+
+    def test_domestic_titles_and_city_aliases(self):
+        self.assertEqual(market.role_for_title("游戏客户端研发工程师"), "software")
+        self.assertEqual(local_analyze(self.resume, "游戏客户端研发工程师")["context"]["role"], "software")
+        self.assertEqual(market.role_for_title("大模型算法工程师"), "data")
+        self.assertEqual(market.level_for_title("高级产品经理"), "senior")
+        self.assertEqual(market.level_for_title("产品经理"), "junior")
+        self.assertEqual(market.level_for_title("研发经理"), "manager")
+        self.assertEqual(market.level_for_title("Senior Product Manager"), "senior")
+        for location, city in (("杭州市", "hangzhou"), ("Beijing, China", "北京市"), ("成都市", "中国"), ("郑州市", "中国")):
+            self.assertTrue(market.location_matches(location, city))
+        self.assertFalse(market.location_matches("Singapore", "中国"))
+
 
 class PersistenceTests(unittest.TestCase):
     def setUp(self):

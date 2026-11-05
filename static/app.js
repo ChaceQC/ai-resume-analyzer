@@ -74,7 +74,8 @@ async function loadSample() {
     $("target-industry").value = "software";
     $("target-role").value = "software";
     $("target-level").value = "junior";
-    $("target-city").value = "";
+    $("target-city").value = "中国";
+    refreshMarketCoverage();
     $("character-count").textContent = sample.resume_text.length.toLocaleString();
     setMode("text");
     currentReport = null;
@@ -454,11 +455,65 @@ fetch("/api/status").then((response) => {
   $("service-status").lastChild.textContent = "服务连接失败";
 });
 
-fetch("/api/market").then((response) => {
-  if (!response.ok) throw new Error("market unavailable");
-  return response.json();
-}).then((market) => {
+let marketRequest = 0;
+let marketTimer;
+
+function renderMarketCoverage(market) {
   $("market-context-status").textContent = market.available
-    ? `${market.jobs} 条职位 · ${market.companies} 家企业。${market.scope} 指定地区样本不足时暂不评估。`
+    ? `快照共 ${market.jobs} 条职位 · ${market.companies} 家企业${market.captured_at ? ` · ${new Date(market.captured_at).toLocaleDateString("zh-CN")} 更新` : ""}`
     : "暂无有效行情样本，仍可进行简历与岗位分析。";
-}).catch(() => { $("market-context-status").textContent = "暂时无法读取行情覆盖范围，仍可进行简历分析。"; });
+  const selection = market.selection;
+  const enabled = $("use-market").checked;
+  $("market-selection-status").classList.toggle("ready", enabled && selection?.status === "available");
+  $("market-selection-status").textContent = !enabled ? "本次未启用行情评估。" : selection
+    ? selection.status === "available"
+      ? `当前范围 ${selection.sample_count} 条职位 / ${selection.company_count} 家企业，已达到评估门槛。`
+      : selection.status === "needs_context"
+        ? `当前范围 ${selection.sample_count} 条职位 / ${selection.company_count} 家企业。${selection.message}`
+        : selection.message
+    : "选择行业、岗位族和职业阶段后，查看实际可用样本。";
+  $("market-city-options").replaceChildren();
+  if (!enabled || !market.available) return;
+  const regions = [...(market.regions || [])].sort((a, b) => (b.city === "中国") - (a.city === "中国") || b.jobs - a.jobs).slice(0, 7);
+  for (const region of [...regions, { city: "", jobs: market.jobs }]) {
+    const button = node("button", region.city ? `${region.city} · ${region.jobs}` : "不限地区");
+    button.type = "button";
+    button.title = region.city ? `${region.city}：${region.jobs} 条职位 / ${region.companies} 家企业` : "使用当前快照中所有地区的样本";
+    button.setAttribute("aria-pressed", String($("target-city").value.trim().replace(/市$/, "") === region.city));
+    button.addEventListener("click", () => {
+      $("target-city").value = region.city;
+      refreshMarketCoverage();
+    });
+    $("market-city-options").append(button);
+  }
+}
+
+async function refreshMarketCoverage() {
+  clearTimeout(marketTimer);
+  const request = ++marketRequest;
+  const query = new URLSearchParams();
+  for (const key of ["industry", "role", "level", "city"]) query.set(key, $(`target-${key}`).value.trim());
+  try {
+    const response = await fetch(`/api/market?${query}`);
+    if (!response.ok) throw new Error("market unavailable");
+    const market = await response.json();
+    if (request === marketRequest) renderMarketCoverage(market);
+  } catch {
+    if (request !== marketRequest) return;
+    $("market-context-status").textContent = "行情快照信息暂不可用";
+    $("market-selection-status").textContent = "暂时无法读取行情覆盖范围，仍可进行简历分析。";
+    $("market-selection-status").classList.remove("ready");
+    $("market-city-options").replaceChildren();
+  }
+}
+
+for (const key of ["industry", "role", "level"]) $("target-" + key).addEventListener("change", refreshMarketCoverage);
+$("use-market").addEventListener("change", refreshMarketCoverage);
+$("target-city").addEventListener("input", () => {
+  clearTimeout(marketTimer);
+  marketRequest++;
+  $("market-selection-status").classList.remove("ready");
+  $("market-selection-status").textContent = "正在查询该地区样本……";
+  marketTimer = setTimeout(refreshMarketCoverage, 250);
+});
+refreshMarketCoverage();

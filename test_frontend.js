@@ -27,7 +27,7 @@ function browser() {
   };
   const context = vm.createContext({
     document: { getElementById: element, createElement: makeElement },
-    window: { innerWidth: 1200 }, Response, ReadableStream, TextDecoder, FormData, AbortController, URL,
+    window: { innerWidth: 1200 }, Response, ReadableStream, TextDecoder, FormData, AbortController, URL, URLSearchParams,
     setTimeout() { return 0; }, clearTimeout() {},
     fetch: async () => new Response(JSON.stringify({ ai_available: false })),
   });
@@ -143,4 +143,41 @@ test("rule ledger, missing market data and advice status are rendered explicitly
   assert.equal(element("advice-summary").hidden, false);
   assert.match(element("advice-summary").textContent, /规则评分已完成/);
   assert.match(element("score-version").textContent, /example/);
+});
+
+test("market coverage keeps a missing city until the user chooses another region", async () => {
+  const { context, element } = browser();
+  element("use-market").checked = true;
+  element("target-city").value = "深圳";
+  const coverage = { available: true, jobs: 300, companies: 4,
+    selection: { status: "insufficient", message: "深圳只有 12 条职位、2 家企业，暂不计分。" },
+    regions: [{ city: "中国", jobs: 150, companies: 3 }, { city: "北京", jobs: 60, companies: 3 }],
+  };
+  context.renderMarketCoverage(coverage);
+  assert.equal(element("target-city").value, "深圳");
+  assert.match(element("market-selection-status").textContent, /深圳.*暂不计分/);
+  let requested;
+  context.fetch = async (url) => { requested = new URL(url, "http://localhost"); return new Response(JSON.stringify(coverage)); };
+  element("market-city-options").children.find((button) => button.textContent.startsWith("北京")).listeners.click();
+  assert.equal(element("target-city").value, "北京");
+  assert.equal(requested.searchParams.get("city"), "北京");
+});
+
+test("older coverage responses cannot overwrite the latest city selection", async () => {
+  const { context, element } = browser();
+  element("use-market").checked = true;
+  const pending = [];
+  context.fetch = (url) => new Promise((resolve) => pending.push({ url, resolve }));
+  element("target-city").value = "北京";
+  const oldRequest = context.refreshMarketCoverage();
+  element("target-city").value = "上海";
+  const latestRequest = context.refreshMarketCoverage();
+  const response = (city) => new Response(JSON.stringify({ available: true, jobs: 80, companies: 3, regions: [],
+    selection: { status: "insufficient", message: city + "样本不足" } }));
+  pending[1].resolve(response("上海"));
+  await latestRequest;
+  pending[0].resolve(response("北京"));
+  await oldRequest;
+  assert.equal(element("market-selection-status").textContent, "上海样本不足");
+  assert.equal(element("target-city").value, "上海");
 });

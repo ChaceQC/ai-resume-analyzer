@@ -7,8 +7,8 @@
   <meta name="description" content="上传简历、匹配目标岗位，获得清晰可执行的简历优化建议。">
   <title>简历透镜 · AI 简历分析</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='12' fill='%23123d36'/%3E%3Cpath d='M12 10h12l5 5v15H12z' stroke='%23b8e6c9' fill='none' stroke-width='2'/%3E%3Cpath d='M17 20h7m-7 5h5' stroke='%23b8e6c9' stroke-width='2'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="/static/style.css?v=3.0.0">
-  <script src="/static/app.js?v=3.0.0" defer></script>
+  <link rel="stylesheet" href="/static/style.css?v=3.0.1">
+  <script src="/static/app.js?v=3.0.1" defer></script>
 </head>
 <body>
   <svg class="icon-definitions" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -60,8 +60,8 @@
               <label>目标行业<select id="target-industry"><option value="">请选择行业</option><option value="software">软件与互联网</option><option value="finance">金融科技</option><option value="healthcare">医疗健康</option><option value="engineering">制造与工程</option></select></label>
               <label>岗位族<select id="target-role"><option value="">从岗位描述识别</option><option value="software">软件工程</option><option value="data">数据与算法</option><option value="product">产品与运营</option><option value="sales">市场销售与客户</option><option value="finance">财务审计与风控</option><option value="design">设计与内容</option><option value="engineering">制造工程与供应链</option><option value="healthcare">医疗与生命科学</option><option value="people">人力与组织管理</option></select></label>
               <label>职业阶段<select id="target-level"><option value="">请选择阶段</option><option value="graduate">校招与实习</option><option value="junior">初中级</option><option value="senior">资深与专家</option><option value="manager">管理岗位</option></select></label>
-              <label>目标地区<input id="target-city" maxlength="80" placeholder="留空为样本内不限地区"></label>
-            </div><label class="market-toggle"><input id="use-market" type="checkbox" checked>结合有效的招聘行情样本</label><p id="market-context-status" class="section-note">正在读取样本覆盖范围……</p></details>
+              <label>目标地区<input id="target-city" maxlength="80" value="中国" placeholder="输入城市；留空为所有样本"></label>
+            </div><label class="market-toggle"><input id="use-market" type="checkbox" checked>结合有效的招聘行情样本</label><p id="market-context-status" class="section-note">正在读取样本覆盖范围……</p><p id="market-selection-status" class="market-selection-status" aria-live="polite"></p><div id="market-city-options" class="market-city-options" aria-label="切换目标地区"></div></details>
             <div class="analysis-mode" id="analysis-mode" hidden><div><strong>AI 深度分析</strong><p>结合岗位要求，深入评估经历与表达</p></div><label class="switch"><input type="checkbox" id="use-ai" disabled aria-label="启用 AI 深度分析"><span></span></label></div>
             <button class="button button-primary" id="analyze-button" type="submit"><svg><use href="#i-spark"/></svg><span id="analyze-label">开始分析简历</span><svg class="button-arrow"><use href="#i-arrow"/></svg></button>
             <p class="privacy-note"><svg><use href="#i-lock"/></svg>不保存简历原文，仅保留评分指纹与分值</p>
