@@ -7,8 +7,8 @@
   <meta name="description" content="上传简历、匹配目标岗位，获得清晰可执行的简历优化建议。">
   <title>简历透镜 · AI 简历分析</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='12' fill='%23123d36'/%3E%3Cpath d='M12 10h12l5 5v15H12z' stroke='%23b8e6c9' fill='none' stroke-width='2'/%3E%3Cpath d='M17 20h7m-7 5h5' stroke='%23b8e6c9' stroke-width='2'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="/static/style.css?v=3.0.1">
-  <script src="/static/app.js?v=3.0.1" defer></script>
+  <link rel="stylesheet" href="/static/style.css?v=4.0.0">
+  <script src="/static/app.js?v=4.0.0" defer></script>
 </head>
 <body>
   <svg class="icon-definitions" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -56,16 +56,14 @@
             <div id="text-panel" role="tabpanel" aria-labelledby="text-tab" hidden><label class="sr-only" for="resume-text">简历正文</label><textarea id="resume-text" rows="10" maxlength="40000" placeholder="在这里粘贴简历正文，包含教育背景、专业技能和项目经历……"></textarea><div class="field-meta"><span>至少 60 字符</span><span><b id="character-count">0</b> / 40,000</span></div></div>
             <div class="field-heading"><label for="job-description">目标岗位描述</label><span>选填，匹配更准确</span></div>
             <textarea id="job-description" rows="6" maxlength="12000" placeholder="粘贴目标岗位的职责和任职要求，了解哪些技能已覆盖、哪些内容值得补充。"></textarea>
-            <details class="target-context" open><summary>评估背景 <span>行情评估需要以下选项</span></summary><div class="context-grid">
+            <details class="target-context" open><summary>目标岗位与地区</summary><div class="context-grid">
               <label>目标行业<select id="target-industry"><option value="">请选择行业</option><option value="software">软件与互联网</option><option value="finance">金融科技</option><option value="healthcare">医疗健康</option><option value="engineering">制造与工程</option></select></label>
               <label>岗位族<select id="target-role"><option value="">从岗位描述识别</option><option value="software">软件工程</option><option value="data">数据与算法</option><option value="product">产品与运营</option><option value="sales">市场销售与客户</option><option value="finance">财务审计与风控</option><option value="design">设计与内容</option><option value="engineering">制造工程与供应链</option><option value="healthcare">医疗与生命科学</option><option value="people">人力与组织管理</option></select></label>
               <label>职业阶段<select id="target-level"><option value="">请选择阶段</option><option value="graduate">校招与实习</option><option value="junior">初中级</option><option value="senior">资深与专家</option><option value="manager">管理岗位</option></select></label>
               <label>目标地区<input id="target-city" maxlength="80" value="中国" placeholder="输入城市；留空为所有样本"></label>
             </div><label class="market-toggle"><input id="use-market" type="checkbox" checked>结合有效的招聘行情样本</label><p id="market-context-status" class="section-note">正在读取样本覆盖范围……</p><p id="market-selection-status" class="market-selection-status" aria-live="polite"></p><div id="market-city-options" class="market-city-options" aria-label="切换目标地区"></div></details>
-            <div class="analysis-mode" id="analysis-mode" hidden><div><strong>AI 深度分析</strong><p>结合岗位要求，深入评估经历与表达</p></div><label class="switch"><input type="checkbox" id="use-ai" disabled aria-label="启用 AI 深度分析"><span></span></label></div>
-            <button class="button button-primary" id="analyze-button" type="submit"><svg><use href="#i-spark"/></svg><span id="analyze-label">开始分析简历</span><svg class="button-arrow"><use href="#i-arrow"/></svg></button>
-            <p class="privacy-note"><svg><use href="#i-lock"/></svg>不保存简历原文，仅保留评分指纹与分值</p>
-            <p class="ai-privacy" id="ai-privacy" hidden>开启后，简历全文与岗位描述会发送至 AI 服务进行分析。</p>
+            <button class="button button-primary" id="analyze-button" type="submit" disabled><svg><use href="#i-spark"/></svg><span id="analyze-label">开始分析简历</span><svg class="button-arrow"><use href="#i-arrow"/></svg></button>
+            <p class="privacy-note"><svg><use href="#i-lock"/></svg>原文发至AI服务，不在本站保存</p>
             <div class="error-message" id="error-message" role="alert" hidden></div>
           </form>
         </section>
@@ -82,11 +80,11 @@
 
           <section id="report" aria-live="polite" hidden>
             <div class="card result-overview"><div class="result-heading"><div><span class="eyebrow">YOUR RESUME INSIGHTS</span><h2>简历分析报告 <span class="source-badge" id="report-source"></span></h2></div><div class="export-buttons"><button class="button button-outline button-small" type="button" id="export-md"><svg><use href="#i-download"/></svg>下载报告</button></div></div><div class="score-summary"><div class="score-ring" id="score-ring"><div><strong id="overall-score">0</strong><span>简历参考分</span></div></div><div class="summary-content"><div class="match-line">岗位匹配 <strong id="match-score">—</strong><span id="match-kind"></span></div><p id="report-summary"></p></div></div><div class="profile-row" id="profile-row"></div></div>
-            <div class="card report-section"><div class="section-heading"><h3>多维质量评估</h3><span>固定规则，可逐项复算</span></div><div id="dimensions" class="dimensions"></div><p class="section-note" id="score-version"></p><p class="section-note">分数反映本次材料中的证据，不代表录用概率。AI 提供解释与建议，正式评分由固定规则计算。</p><p id="advice-summary" class="advice-summary" hidden></p></div>
-            <div class="card report-section"><div class="section-heading"><h3>每一分的依据</h3><span id="score-ledger-total"></span></div><p class="section-note">展开条目查看得分条件、失分原因，并定位简历原文。</p><div id="score-items" class="score-items"></div></div>
-            <div class="card report-section" id="requirements-section"><div class="section-heading"><h3>岗位要求逐项匹配</h3><span>区分必备、加分与可替代条件</span></div><div id="requirements" class="score-items"></div></div>
-            <div class="card report-section"><div class="section-heading"><h3>行业行情与投递参考</h3><a href="/api/market/snapshot" class="text-link">下载样本与来源</a></div><div class="market-scores"><div><span>行情要求适配</span><strong id="market-score">—</strong></div><div><span>投递综合参考</span><strong id="application-score">—</strong></div></div><p id="market-message" class="market-message"></p><p id="market-scope" class="section-note"></p><p id="market-method" class="section-note"></p><div id="market-items" class="score-items"></div><details class="application-details"><summary>综合分的计算与来源</summary><p id="application-method" class="section-note"></p><div id="application-items"></div></details></div>
-            <div class="card report-section"><div class="section-heading"><h3>技能与岗位匹配</h3></div><h4>简历中识别到的技能</h4><div id="skills" class="chips"></div><div id="job-skills"><h4>已提供依据的岗位要求 <span class="legend-dot green"></span></h4><div id="matched-skills" class="chips"></div><h4>尚缺依据的岗位要求 <span class="legend-dot amber"></span></h4><div id="missing-skills" class="chips"></div></div><p class="section-note">请结合岗位要求和真实经历核对，技能匹配不代表实际熟练程度。</p></div>
+            <div class="card report-section"><div class="section-heading"><h3>多维质量评估</h3></div><div id="dimensions" class="dimensions"></div></div>
+            <div class="card report-section"><div class="section-heading"><h3>每一分的依据</h3><span id="score-ledger-total"></span></div><div id="score-items" class="score-items"></div></div>
+            <div class="card report-section" id="requirements-section"><div class="section-heading"><h3>岗位要求逐项匹配</h3></div><div id="requirements" class="score-items"></div></div>
+            <div class="card report-section"><div class="section-heading"><h3>行业行情与投递参考</h3><a href="/api/market/snapshot" class="text-link">下载样本与来源</a></div><div class="market-scores"><div><span>行情要求适配</span><strong id="market-score">—</strong></div><div><span>投递综合参考</span><strong id="application-score">—</strong></div></div><p id="market-message" class="market-message"></p><p id="market-scope" class="section-note"></p><details class="market-sources"><summary>来源与口径</summary><p id="market-method" class="section-note"></p></details><div id="market-items" class="score-items"></div><details class="application-details"><summary>综合分的计算与来源</summary><p id="application-method" class="section-note"></p><div id="application-items"></div></details></div>
+            <div class="card report-section"><div class="section-heading"><h3>技能与岗位匹配</h3></div><h4>简历中识别到的技能</h4><div id="skills" class="chips"></div><div id="job-skills"><h4>已提供依据的岗位要求 <span class="legend-dot green"></span></h4><div id="matched-skills" class="chips"></div><h4>尚缺依据的岗位要求 <span class="legend-dot amber"></span></h4><div id="missing-skills" class="chips"></div></div></div>
             <div class="card report-section"><div class="section-heading"><h3>值得保留的优势</h3><span class="green-text">KEEP GOING</span></div><ul id="strengths" class="strength-list"></ul></div>
             <div class="card report-section"><div class="section-heading"><h3>下一步，优先优化这些</h3><span>具体建议，更容易行动</span></div><div id="suggestions" class="suggestions"></div></div>
             <div class="card report-section" id="rewrites-section"><div class="section-heading"><h3>让项目描述更有说服力</h3><span>改写参考</span></div><div id="rewrites" class="rewrites"></div><p class="section-note">方括号中的内容需替换为你的真实经历与数据。</p></div>

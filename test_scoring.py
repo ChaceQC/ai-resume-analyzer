@@ -15,10 +15,14 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 import market
-from analyzer import local_analyze
+from analyzer import prepare_analysis
+from ai_scoring import apply_scores
+from test_support import model_assessment
+from test_app import mock_provider
 from app import ROOT, app
 from score_store import remember
-from scoring import DIMENSIONS, VERSION, extract_skills, facts, fingerprint, parse_requirements, rounded
+from scoring import VERSION, fingerprint, quote_reference, rounded
+from rubric import DIMENSIONS
 from update_market import build_snapshot, market_requirements
 
 
@@ -35,117 +39,100 @@ def fixture_snapshot():
 
 
 class ScoringTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        cls.resume = (ROOT / "samples/resume.txt").read_text(encoding="utf-8")
-        cls.job = (ROOT / "samples/job.txt").read_text(encoding="utf-8")
+    def setUp(self):
+        self.resume = (ROOT / "samples/resume.txt").read_text(encoding="utf-8")
+        self.job = (ROOT / "samples/job.txt").read_text(encoding="utf-8")
 
-    def test_twenty_cold_calculations_have_zero_variation(self):
-        reports = [local_analyze(self.resume, self.job) for _ in range(20)]
-        self.assertEqual(len({report["overall_score"] for report in reports}), 1)
-        self.assertEqual(len({report["job_match_score"] for report in reports}), 1)
-        self.assertTrue(all(report["score_items"] == reports[0]["score_items"] for report in reports))
+    def prepared(self, text=None, job=""):
+        text = self.resume if text is None else text
+        report = prepare_analysis(text, job)
+        market.attach(report, text, job, {})
+        return report
 
-    def test_soft_wrapping_and_heading_aliases_preserve_scores(self):
-        sentence = "通过 Redis 缓存热门商品，将接口平均响应时间从 320ms 降低到 110ms。"
-        baseline = local_analyze(self.resume, self.job)
-        variants = [self.resume.replace(sentence, sentence.replace("将接口", "\n将接口")),
-                    self.resume.replace("项目经历", "相关实践"), self.resume.replace("项目经历", "研究经历"),
-                    self.resume.replace("专业技能", "【核心能力】"), self.resume.replace("\n", "\r\n")]
-        for text in variants:
-            with self.subTest(text=text[:20]):
-                report = local_analyze(text, self.job)
-                self.assertLessEqual(abs(report["overall_score"] - baseline["overall_score"]), 2)
-                self.assertEqual(report["job_match_score"], baseline["job_match_score"])
+    def test_preparation_never_assigns_quality_or_match_points(self):
+        for text in (self.resume, "熟悉 Python Docker SQL，负责开发，提升1000%。" * 30):
+            report = self.prepared(text, self.job)
+            self.assertIsNone(report["overall_score"])
+            self.assertIsNone(report["job_match_score"])
+            self.assertTrue(all(item["points"] is None for item in report["score_items"]))
+            self.assertEqual(sum(item["max_points"] for item in report["score_items"]), 100)
+            self.assertEqual(len(report["score_items"]), 20)
 
-    def test_negation_future_and_contrast(self):
-        for text in ("不熟悉 Python，尚未使用过 Docker。", "计划学习 Python 和 Docker。",
-                     "No experience with Python; never used Docker.", "Python、Docker 都不会。"):
-            self.assertEqual(extract_skills(text), [], text)
-        self.assertEqual(extract_skills("不熟悉 Python，但熟悉 Docker。"), ["Docker"])
-        self.assertEqual(extract_skills("不仅熟悉 Python，还熟悉 Docker。"), ["Python", "Docker"])
-        self.assertEqual(local_analyze("不熟悉 Python，尚未使用 Docker。", "Python Docker")["job_match_score"], 0)
+    def test_model_judgments_drive_points_and_each_dimension_adds_up(self):
+        data = model_assessment(self.resume)
+        report = self.prepared()
+        data["score_items"][9]["points"] = 7
+        apply_scores(data, report, self.resume, "")
+        self.assertEqual(report["score_items"][9]["points"], 7)
+        self.assertEqual(report["overall_score"], sum(item["points"] for item in data["score_items"]))
+        for dimension in report["dimensions"]:
+            self.assertEqual(dimension["max_points"], DIMENSIONS[dimension["label"]])
+            self.assertEqual(dimension["points"], sum(item["points"] for item in report["score_items"] if item["dimension"] == dimension["label"]))
 
-    def test_or_requirements_optional_priority_and_practice(self):
-        report = local_analyze(self.resume, "熟悉 FastAPI 或 Django。")
-        self.assertEqual(report["job_match_score"], 100)
-        self.assertEqual(report["missing_skills"], [])
-        requirements = parse_requirements("必备条件\n熟悉 Python\n加分项\n了解 Kubernetes")
-        by_name = {item["skills"][0]: item for item in requirements}
-        self.assertEqual(by_name["Python"]["weight"], 3)
-        self.assertEqual(by_name["Kubernetes"]["weight"], 1)
-        self.assertEqual(local_analyze(self.resume, "必备条件\n熟悉 Python\n加分项\n了解 Kubernetes")["job_match_score"], 75)
-        self.assertEqual(len(parse_requirements("熟悉 Python。熟悉 Python。")), 1)
-        self.assertEqual(parse_requirements("不要求 Python，仅要求 Docker。")[0]["skills"], ["Docker"])
-        self.assertEqual(local_analyze("专业技能\nPython", "需要 Python 项目经验")["job_match_score"], 50)
+    def test_bad_numeric_values_are_rejected_without_clamping(self):
+        for invalid in (-1, 999, 1.5, "2", True, None, float("nan"), float("inf")):
+            data = model_assessment(self.resume)
+            data["score_items"][0]["points"] = invalid
+            with self.subTest(value=invalid), self.assertRaises(ValueError):
+                apply_scores(data, self.prepared(), self.resume, "")
 
-    def test_team_result_does_not_establish_personal_ownership(self):
-        text = "项目经历\n团队将接口响应耗时从 200ms 降低至 50ms，本人参与接口文档整理。"
-        evidence = facts(text)
-        self.assertEqual(evidence["owned"], [])
-        self.assertEqual(evidence["comparisons"], [])
-        self.assertEqual(evidence["outcomes"], [])
-        report = local_analyze("项目经历\n团队使用 Python 开发模型，本人仅负责接口文档。", "Python")
-        self.assertEqual(report["job_match_score"], 0)
-        self.assertNotIn("Python", report["skills"])
-        self.assertEqual(local_analyze("项目经历\n团队独立使用 Python 实现整个系统。", "Python")["job_match_score"], 0)
-        self.assertEqual(local_analyze("Work Experience\nMy team used Python to build the service.", "Python")["job_match_score"], 0)
-        self.assertEqual(local_analyze("项目经历\n团队使用 Python 开发模型，本人使用 SQL 实现报表查询。", "SQL")["job_match_score"], 100)
+    def test_missing_duplicate_and_unknown_items_are_rejected(self):
+        original = model_assessment(self.resume)
+        variants = [original["score_items"][:-1], original["score_items"] + [original["score_items"][0]],
+                    [original["score_items"][0]] * 20,
+                    [dict(item, id="unknown") if index == 0 else item for index, item in enumerate(original["score_items"])]]
+        for values in variants:
+            data = dict(original, score_items=values)
+            with self.subTest(items=len(values)), self.assertRaises(ValueError):
+                apply_scores(data, self.prepared(), self.resume, "")
 
-    def test_job_titles_do_not_count_as_actions_or_practical_skill_evidence(self):
-        text = "陈同学\nPython 后端开发工程师\n电话：13800138000\n专业技能\n熟悉 Python。"
-        evidence = facts(text)
-        self.assertEqual(evidence["actions"], [])
-        self.assertNotIn("Python", evidence["practiced"])
-        report = local_analyze(text, "需要 Python 项目经验")
-        self.assertEqual(report["job_match_score"], 50)
+    def test_points_need_real_quotes_and_explanations(self):
+        for changes in ({"evidence": []}, {"evidence": ["编造的简历原句"]}, {"reason": ""}, {"evidence": "not a list"}):
+            data = model_assessment(self.resume)
+            data["score_items"][0].update(changes)
+            with self.subTest(changes=changes), self.assertRaises(ValueError):
+                apply_scores(data, self.prepared(), self.resume, "")
 
-    def test_degree_years_and_certifications_are_explicit_job_conditions(self):
-        text = "教育背景\n示例大学 本科\n专业技能\n持有 CPA 注册会计师资格\n工作经历\n具有5年财务会计工作经验。"
-        report = local_analyze(text, "本科及以上，至少3年财务工作经验，CPA 优先。")
-        self.assertEqual(report["job_match_score"], 100)
-        self.assertEqual({item.get("kind", "skill") for item in report["requirements"]}, {"degree", "years", "skill"})
-        self.assertEqual(local_analyze("教育背景\n示例大学 本科在读", "本科及以上学历")["job_match_score"], 0)
-        self.assertEqual(local_analyze("教育背景\n示例大学 本科在读", "本科在读可申请")["job_match_score"], 100)
-        self.assertEqual(local_analyze("本人尚未取得本科学历，也没有3年工作经验。", "本科，3年工作经验")["job_match_score"], 0)
-        self.assertEqual(local_analyze("教育背景\n2020—2025 示例大学 本科", "5年工作经验")["job_match_score"], 0)
-        self.assertEqual(extract_skills("Python is not required, Docker preferred."), ["Docker"])
+    def test_original_unicode_coordinates_survive_normalized_quotes(self):
+        text = "😀\n项目经历\n使用 Ｐｙｔｈｏｎ\n实现接口校验，生成报告。"
+        ref = quote_reference(text, "使用 Python 实现接口校验")
+        self.assertEqual(text[ref["start"]:ref["end"]], ref["quote"])
+        self.assertIn("Ｐｙｔｈｏｎ\n", ref["quote"])
+        self.assertGreater(ref["start"], 1)
+        with self.assertRaises(ValueError):
+            quote_reference(text, "完全没有的原句")
 
-    def test_ledger_sums_and_all_awarded_points_have_exact_citations(self):
-        report = local_analyze(self.resume, self.job)
-        self.assertEqual(sum(item["max_points"] for item in report["score_items"]), 100)
-        self.assertEqual(sum(item["points"] for item in report["score_items"]), report["overall_score"])
-        for label, maximum in DIMENSIONS.items():
-            group = [item for item in report["score_items"] if item["dimension"] == label]
-            self.assertEqual(sum(item["max_points"] for item in group), maximum)
+    def test_ai_can_extract_non_keyword_job_requirements(self):
+        job = "必备：本科毕业且具有三年工作经验。加分：持有消防执业资格。"
+        data = model_assessment(self.resume)
+        data["requirements"] = [
+            {"title": "本科毕业", "priority": "必备", "job_quote": "本科毕业", "skills": [], "match": "met", "reason": "有毕业信息。", "evidence": ["2021.09 — 2025.06 示例大学 软件工程 本科"]},
+            {"title": "三年工作经验", "priority": "必备", "job_quote": "具有三年工作经验", "skills": [], "match": "missing", "reason": "无明确年限。", "evidence": []},
+            {"title": "消防执业资格", "priority": "加分", "job_quote": "持有消防执业资格", "skills": [], "match": "missing", "reason": "无对应资格。", "evidence": []}]
+        report = self.prepared(job=job)
+        apply_scores(data, report, self.resume, job)
+        self.assertEqual(report["job_match_score"], 43)
+        self.assertEqual(sum(item["max_points"] for item in report["requirements"]), 100)
+        self.assertEqual(report["requirements"][0]["weight"], 3)
+        self.assertEqual(report["requirements"][-1]["weight"], 1)
+
+    def test_invented_job_quotes_and_unsupported_matches_are_rejected(self):
+        for changes in ({"job_quote": "岗位没有这条要求"}, {"match": "met", "evidence": []}, {"priority": "任意"}):
+            data = model_assessment(self.resume, self.job)
+            data["requirements"][0].update(changes)
+            with self.subTest(changes=changes), self.assertRaises(ValueError):
+                apply_scores(data, self.prepared(job=self.job), self.resume, self.job)
+        data = model_assessment(self.resume, self.job)
+        with self.assertRaises(ValueError):
+            apply_scores(data, self.prepared(), self.resume, "")
+
+    def test_all_awarded_points_keep_exact_resume_and_job_coordinates(self):
+        report = self.prepared(job=self.job)
+        apply_scores(model_assessment(self.resume, self.job), report, self.resume, self.job)
         for item in report["score_items"] + report["requirements"]:
-            if item["points"] and item in report["score_items"]:
-                self.assertTrue(item["evidence"], item["id"])
             for ref in item.get("evidence", []) + item.get("resume_evidence", []):
                 source = self.resume if ref["source"] == "resume" else self.job
                 self.assertEqual(source[ref["start"]:ref["end"]], ref["quote"])
-
-    def test_full_width_and_pdf_quotes_use_original_character_offsets(self):
-        text = self.resume.replace("Python", "Ｐｙｔｈｏｎ").replace("将接口", "\n将接口")
-        report = local_analyze(text, self.job)
-        for item in report["score_items"]:
-            for ref in item["evidence"]:
-                self.assertEqual(text[ref["start"]:ref["end"]], ref["quote"])
-
-    def test_duplicates_do_not_improve_action_or_result_points(self):
-        sentence = "通过 Redis 缓存热门商品，将接口平均响应时间从 320ms 降低到 110ms。"
-        baseline = local_analyze(self.resume, "")
-        repeated = local_analyze(self.resume.replace("自我评价", "\n".join(f"{n}. {sentence}" for n in range(10)) + "\n自我评价"), "")
-        for identifier in ("results.action", "results.outcome", "results.comparison", "skills.method"):
-            self.assertEqual(next(item["points"] for item in baseline["score_items"] if item["id"] == identifier),
-                             next(item["points"] for item in repeated["score_items"] if item["id"] == identifier))
-
-    def test_level_changes_are_explicit_and_rounding_is_half_up(self):
-        graduate = local_analyze(self.resume, self.job, {"level": "graduate"})
-        senior = local_analyze(self.resume, self.job, {"level": "senior"})
-        self.assertNotEqual(graduate["context"], senior["context"])
-        self.assertEqual(rounded(78.5), 79)
-        self.assertEqual(graduate["meta"]["scoring_version"], VERSION)
 
 
 class MarketTests(unittest.TestCase):
@@ -159,7 +146,8 @@ class MarketTests(unittest.TestCase):
         self.assertEqual(result["status"], "available")
         self.assertEqual(result["sample_count"], 30)
         self.assertEqual(result["company_count"], 3)
-        self.assertEqual(result["score"], rounded(sum(item["points"] for item in result["items"])))
+        self.assertIsNone(result["score"])
+        self.assertTrue(all(item["points"] is None for item in result["items"]))
         self.assertAlmostEqual(sum(item["max_points"] for item in result["items"]), 100)
         for item in result["items"]:
             self.assertEqual(item["company_mentions"], 3)
@@ -192,8 +180,10 @@ class MarketTests(unittest.TestCase):
         self.assertIsNone(result["score"])
 
     def test_application_ledger_does_not_repeat_explicit_job_skills_in_market(self):
-        report = local_analyze(self.resume, "熟悉 Python", self.context)
+        report = prepare_analysis(self.resume, "熟悉 Python", self.context)
         market.attach(report, self.resume, "熟悉 Python", self.snapshot)
+        apply_scores(model_assessment(self.resume, "熟悉 Python", report["market"]["items"]), report, self.resume, "熟悉 Python")
+        market.combine(report)
         ledger = report["application"]["items"]
         self.assertIsNotNone(report["application"]["score"])
         self.assertAlmostEqual(sum(item["max_points"] for item in ledger), 100)
@@ -250,7 +240,7 @@ class MarketTests(unittest.TestCase):
 
     def test_domestic_titles_and_city_aliases(self):
         self.assertEqual(market.role_for_title("游戏客户端研发工程师"), "software")
-        self.assertEqual(local_analyze(self.resume, "游戏客户端研发工程师")["context"]["role"], "software")
+        self.assertEqual(prepare_analysis(self.resume, "游戏客户端研发工程师")["context"]["role"], "software")
         self.assertEqual(market.role_for_title("大模型算法工程师"), "data")
         self.assertEqual(market.level_for_title("高级产品经理"), "senior")
         self.assertEqual(market.level_for_title("产品经理"), "junior")
@@ -273,8 +263,11 @@ class PersistenceTests(unittest.TestCase):
         self.job = "熟悉 Python"
 
     def report(self):
-        report = local_analyze(self.resume, self.job)
+        report = prepare_analysis(self.resume, self.job)
         market.attach(report, self.resume, self.job, {})
+        apply_scores(model_assessment(self.resume, self.job), report, self.resume, self.job)
+        report["source"] = "ai"
+        report["meta"]["model"] = "test-model"
         remember(report, self.resume, self.job)
         return report
 
@@ -299,7 +292,7 @@ class PersistenceTests(unittest.TestCase):
         self.assertEqual(repaired["meta"]["score_cache"], "repaired")
 
     def test_api_context_validation_and_source_text(self):
-        with TestClient(app) as client, patch("market.load_snapshot", return_value=fixture_snapshot()):
+        with TestClient(app) as client, patch("market.load_snapshot", return_value=fixture_snapshot()), mock_provider():
             for field in ("industry", "role", "level"):
                 response = client.post("/api/analyze", data={"resume_text": self.resume, field: "invalid"})
                 self.assertEqual(response.status_code, 400)

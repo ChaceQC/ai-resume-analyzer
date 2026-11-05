@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from scoring import INDUSTRIES, LEVELS, ROLES, VERSION, candidate_skills, citation, facts, fingerprint, rounded
+from scoring import INDUSTRIES, LEVELS, ROLES, VERSION, fingerprint, rounded
 
 
 ROOT = Path(__file__).resolve().parent
@@ -153,8 +153,6 @@ def assess(text: str, job: str, context: dict, snapshot=None, now=None) -> dict:
     if not ranked:
         result.update(status="insufficient", message="同类样本中尚未提取到跨企业的共同能力要求，暂不计分。")
         return result
-    resume_facts = facts(text)
-    mentions = set(candidate_skills(text, resume_facts["units"]))
     total = sum(len(mentions_by_company[skill]) for skill in ranked)
     remaining = 100.0
     items = []
@@ -162,18 +160,15 @@ def assess(text: str, job: str, context: dict, snapshot=None, now=None) -> dict:
         weight = len(mentions_by_company[skill])
         maximum = round(weight * 100 / total, 2) if index < len(ranked) - 1 else round(remaining, 2)
         remaining = round(remaining - maximum, 2)
-        ratio = 1 if skill in resume_facts["practiced"] else (.25 if skill in mentions else 0)
-        evidence = ([citation(resume_facts["practiced"][skill])] if skill in resume_facts["practiced"] else
-                    [citation(unit) for unit in resume_facts["units"] if skill in candidate_skills("", [unit])][:1])
         items.append({"id": "market-" + fingerprint(skill)[:12], "title": skill, "skill": skill,
-                      "max_points": maximum, "points": round(maximum * ratio, 2), "company_mentions": weight,
+                      "max_points": maximum, "points": None, "company_mentions": weight,
                       "company_total": len(companies), "frequency": round(weight / len(companies), 3),
                       "rule": "权重按提及该能力的企业数分配；明确应用得100%，仅陈述得25%，未提供证据得0%。",
-                      "rule_version": VERSION, "evidence": evidence,
+                      "rule_version": VERSION, "evidence": [],
                       "sources": sorted(supports[skill], key=lambda entry: (entry["company"], entry["id"]))})
     source_companies = {entry["company"] for item in items for entry in item["sources"]}
-    result.update(status="available", score=rounded(sum(item["points"] for item in items)), items=items,
-                  message="已对照当前快照中的同类公开职位；这是有限样本的要求适配参考。",
+    result.update(status="available", score=None, items=items,
+                  message="已提取同类公开职位要求，待AI对照简历评估。",
                   sources=[source for source in snapshot.get("sources", []) if source["company"] in source_companies])
     return result
 
@@ -181,8 +176,13 @@ def assess(text: str, job: str, context: dict, snapshot=None, now=None) -> dict:
 def attach(report: dict, text: str, job: str, snapshot=None, now=None) -> None:
     market = assess(text, job, report["context"], snapshot, now)
     report["market"] = market
+    combine(report)
+
+
+def combine(report: dict) -> None:
+    market = report["market"]
     report["application"] = {"score": None, "items": [], "message": "需要可评估的岗位要求和有效行情样本，才能计算投递综合分。"}
-    if market["score"] is None or report["job_match_score"] is None:
+    if market["score"] is None or report["job_match_score"] is None or report["overall_score"] is None:
         return
     explicit = {name for requirement in report["requirements"] for name in requirement["skills"]}
     additional = [item for item in market["items"] if item["skill"] not in explicit]

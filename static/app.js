@@ -105,12 +105,11 @@ $("guide-dialog").addEventListener("click", (event) => {
     if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) closeGuide();
   }
 });
-$("use-ai").addEventListener("change", () => { $("ai-privacy").hidden = !$("use-ai").checked; });
 
 function setBusy(value) {
   busy = value;
   for (const element of $("analysis-form").querySelectorAll("input, textarea, select, button")) element.disabled = value;
-  $("use-ai").disabled = value || !aiAvailable;
+  $("analyze-button").disabled = value || !aiAvailable;
   $("sample-button").disabled = value;
   $("sidebar-sample").disabled = value;
   $("analyze-label").textContent = value ? "正在分析，请稍候…" : "开始分析简历";
@@ -155,7 +154,7 @@ function criterion(item) {
   container.append(title, node("p", item.rule, "criterion-rule"));
   if (item.observation) container.append(node("p", item.observation, "criterion-status"));
   if (item.priority) container.append(node("p", `${item.priority}要求 · ${item.status}`, "criterion-status"));
-  if (item.missing) container.append(node("p", item.missing, "criterion-missing"));
+  if (item.missing && item.missing !== item.observation) container.append(node("p", item.missing, "criterion-missing"));
   for (const reference of [...(item.evidence || []), ...(item.resume_evidence || [])]) {
     const quote = node("blockquote", reference.quote, "evidence-quote");
     const button = node("button", reference.source === "job" ? "定位岗位原文" : "定位简历原文", "evidence-button");
@@ -192,9 +191,6 @@ function renderScoring(report) {
     for (const item of group) details.append(criterion(item));
     $("score-items").append(details);
   }
-  $("score-version").textContent = `规则 ${report.meta.scoring_version} · 评分快照 ${report.meta.score_snapshot_id || "—"} · ${report.meta.score_cache === "hit" ? "已复核相同输入的评分结果" : "已按固定规则计算"}`;
-  $("advice-summary").hidden = !report.advice_summary && !report.advice_error;
-  $("advice-summary").textContent = report.advice_error ? `规则评分已完成。AI 建议暂不可用：${report.advice_error}` : (report.advice_summary ? `AI 建议：${report.advice_summary}` : "");
   const requirements = report.requirements || [];
   $("requirements-section").hidden = !requirements.length;
   $("requirements").replaceChildren();
@@ -203,9 +199,9 @@ function renderScoring(report) {
   const application = report.application || { score: null, message: "暂无综合评估", items: [] };
   $("market-score").textContent = market.score === null ? "未评估" : `${market.score} / 100`;
   $("application-score").textContent = application.score === null ? "未评估" : `${application.score} / 100`;
-  $("market-message").textContent = market.message;
-  $("market-scope").textContent = `${market.target_label || ""}。${market.scope || ""}${market.captured_at ? ` · 采集于 ${new Date(market.captured_at).toLocaleString("zh-CN")}` : ""} · 当前范围 ${market.sample_count || 0} 条职位 / ${market.company_count || 0} 家企业`;
-  $("market-method").textContent = [market.method, market.limitations].filter(Boolean).join(" ");
+  $("market-message").textContent = market.score === null ? ({ insufficient: "样本不足，暂未评估", stale: "行情待更新", disabled: "行情已关闭", needs_context: "缺少评估条件" }[market.status] || "暂无行情样本") : "";
+  $("market-scope").textContent = `${market.target_label || ""} · ${market.sample_count || 0}个岗位 / ${market.company_count || 0}家企业`;
+  $("market-method").textContent = [market.scope, market.captured_at ? `采集于 ${new Date(market.captured_at).toLocaleString("zh-CN")}` : "", market.method, market.limitations].filter(Boolean).join(" ");
   $("market-items").replaceChildren();
   for (const item of market.items) $("market-items").append(criterion(item));
   $("application-method").textContent = application.message;
@@ -227,11 +223,11 @@ function renderScoring(report) {
 }
 
 function renderReport(report) {
-  $("report-source").textContent = report.source === "ai" ? "规则评分 · AI 建议" : "固定规则评分";
+  $("report-source").textContent = "AI评分";
   $("overall-score").textContent = report.overall_score;
   $("score-ring").style.setProperty("--score", report.overall_score);
   $("match-score").textContent = report.job_match_score === null ? "—" : `${report.job_match_score} / 100`;
-  $("match-kind").textContent = !report.meta.job_provided ? "未提供岗位描述" : (report.job_match_score === null ? "暂未识别到可评估要求" : "按必备、加分与替代关系计算");
+  $("match-kind").textContent = !report.meta.job_provided ? "未提供岗位" : (report.job_match_score === null ? "未评估" : "");
   $("report-summary").textContent = report.summary;
   $("profile-row").replaceChildren();
   for (const [key, label] of [["name", "姓名"], ["education", "学历"], ["email", "邮箱"], ["phone", "电话"]]) {
@@ -311,7 +307,6 @@ async function readAnalysis(response, onActivity) {
     const event = JSON.parse(payload);
     if (event.type === "error") throw new Error(event.message);
     if (event.type === "status") $("loading-description").textContent = event.message;
-    if (event.type === "advice_error") $("loading-description").textContent = "规则评分已完成，正在保留评分结果……";
     if (event.type === "summary") {
       $("stream-preview").hidden = false;
       $("stream-summary").textContent = event.text;
@@ -346,6 +341,7 @@ async function readAnalysis(response, onActivity) {
 $("analysis-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   if (busy) return;
+  if (!aiAvailable) { toast("AI评分服务尚未就绪，请稍后重试。"); return; }
   $("error-message").hidden = true;
   const form = new FormData();
   if (inputMode === "upload") {
@@ -362,12 +358,12 @@ $("analysis-form").addEventListener("submit", async (event) => {
   form.append("job_description", $("job-description").value);
   for (const key of ["industry", "role", "level", "city"]) form.append(key, $(`target-${key}`).value.trim());
   form.append("use_market", String($("use-market").checked));
-  form.append("use_ai", String($("use-ai").checked));
-  const useAI = $("use-ai").checked;
-  form.append("stream", String(useAI && typeof ReadableStream !== "undefined" && typeof TextDecoder !== "undefined"));
+  form.append("use_ai", "true");
+  form.append("stream", String(typeof ReadableStream !== "undefined" && typeof TextDecoder !== "undefined"));
   $("stream-preview").hidden = true;
   $("stream-summary").textContent = "";
-  $("loading-description").textContent = useAI ? "正在评估岗位契合度与项目经历，通常需要 10—60 秒……" : "正在整理技能与改进建议……";
+  currentReport = null;
+  $("loading-description").textContent = "正在评分，约30—90秒……";
   $("empty-state").hidden = true;
   $("report").hidden = true;
   setBusy(true);
@@ -375,7 +371,7 @@ $("analysis-form").addEventListener("submit", async (event) => {
   let timer;
   const onActivity = () => {
     clearTimeout(timer);
-    timer = setTimeout(() => controller.abort(), useAI ? 120000 : 30000);
+    timer = setTimeout(() => controller.abort(), 120000);
   };
   onActivity();
   try {
@@ -394,22 +390,21 @@ $("analysis-form").addEventListener("submit", async (event) => {
 });
 
 function markdown(report) {
-  const lines = ["# 简历分析报告", "", `分析方式：${report.source === "ai" ? "AI 深度分析" : "基础分析"}`,
-    `简历参考分：${report.overall_score}/100`, `规则版本：${report.meta.scoring_version}；评分快照：${report.meta.score_snapshot_id || "—"}`, "分数由固定规则计算，AI 仅提供建议。", `岗位要求匹配：${report.job_match_score === null ? "未评估" : report.job_match_score + "/100"}`, "", report.summary,
+  const lines = ["# 简历分析报告", "", "分析方式：AI按严格细则逐项评分",
+    `简历参考分：${report.overall_score}/100`, `规则版本：${report.meta.scoring_version}；评分快照：${report.meta.score_snapshot_id || "—"}`, "AI判断每项得分与满足程度，程序校验原文引用并按公开权重加总。", `岗位要求匹配：${report.job_match_score === null ? "未评估" : report.job_match_score + "/100"}`, "", report.summary,
     "", "## 基本信息", ...Object.entries(report.profile).map(([key, value]) => `- ${{name:"姓名",education:"学历",email:"邮箱",phone:"电话"}[key]}：${value}`),
     "", "## 多维评估", ...report.dimensions.map((v) => `- ${v.label}：${v.score}/100。${v.detail}`),
     "", "## 技能关键词", `已识别：${report.skills.join("、") || "无"}`, `岗位已覆盖：${report.matched_skills.join("、") || "无"}`, `岗位未检索到：${report.missing_skills.join("、") || "无"}`,
     "请结合岗位要求和真实经历核对，技能匹配不代表实际熟练程度。", "", "## 优势", ...report.strengths.map((v) => `- ${v}`), "", "## 改进建议",
     ...report.suggestions.map((v) => `- [${v.priority}优先] ${v.title}：${v.detail}`), "", "## 改写参考"];
   for (const rewrite of report.rewrites) lines.push("", `原句：${rewrite.before}`, "", `建议：${rewrite.after}`);
-  if (report.advice_summary) lines.push("", "## AI 建议", report.advice_summary);
-  if (report.advice_error) lines.push("", "AI 建议暂不可用：" + report.advice_error + "；规则评分已完成。");
   const appendItems = (title, items) => {
     lines.push("", `## ${title}`);
     for (const item of items || []) {
       lines.push("", `### ${item.title}：${item.points}/${item.max_points} 分`, `规则：${item.rule}`);
-      if (item.observation) lines.push(item.observation);
-      if (item.missing) lines.push(`待补充：${item.missing}`);
+      if (item.observation) lines.push("AI判断：" + item.observation);
+      if (item.observation) lines.push("AI判断：" + item.observation);
+      if (item.missing && item.missing !== item.observation) lines.push(`待补充：${item.missing}`);
       for (const reference of [...(item.evidence || []), ...(item.resume_evidence || [])]) lines.push(`依据（${reference.source === "job" ? "岗位" : "简历"}，字符 ${reference.start}—${reference.end}）：`, `> ${reference.quote.replace(/\n/g, "\n> ")}`);
       for (const source of item.sources || []) lines.push(`- ${source.company} · ${source.title}：${source.url}`, `  > ${source.quote}`);
     }
@@ -448,9 +443,8 @@ fetch("/api/status").then((response) => {
   return response.json();
 }).then((status) => {
   aiAvailable = status.ai_available;
-  $("service-status").lastChild.textContent = "可以开始分析";
-  $("analysis-mode").hidden = !aiAvailable;
-  $("use-ai").disabled = busy || !aiAvailable;
+  $("service-status").lastChild.textContent = aiAvailable ? "AI评分服务已就绪" : "AI评分服务未配置";
+  $("analyze-button").disabled = busy || !aiAvailable;
 }).catch(() => {
   $("service-status").lastChild.textContent = "服务连接失败";
 });
@@ -459,19 +453,16 @@ let marketRequest = 0;
 let marketTimer;
 
 function renderMarketCoverage(market) {
-  $("market-context-status").textContent = market.available
-    ? `快照共 ${market.jobs} 条职位 · ${market.companies} 家企业${market.captured_at ? ` · ${new Date(market.captured_at).toLocaleDateString("zh-CN")} 更新` : ""}`
-    : "暂无有效行情样本，仍可进行简历与岗位分析。";
+  $("market-context-status").textContent = market.available ? `${market.jobs}个岗位 · ${market.companies}家企业` : "暂无行情样本";
   const selection = market.selection;
   const enabled = $("use-market").checked;
   $("market-selection-status").classList.toggle("ready", enabled && selection?.status === "available");
-  $("market-selection-status").textContent = !enabled ? "本次未启用行情评估。" : selection
-    ? selection.status === "available"
-      ? `当前范围 ${selection.sample_count} 条职位 / ${selection.company_count} 家企业，已达到评估门槛。`
-      : selection.status === "needs_context"
-        ? `当前范围 ${selection.sample_count} 条职位 / ${selection.company_count} 家企业。${selection.message}`
-        : selection.message
-    : "选择行业、岗位族和职业阶段后，查看实际可用样本。";
+  $("market-selection-status").textContent = !enabled ? "行情已关闭" : selection
+    ? ["available", "needs_context", "insufficient"].includes(selection.status)
+      ? `${selection.sample_count || 0}个岗位 · ${selection.company_count || 0}家企业${selection.status === "insufficient" ? " · 样本不足" : ""}`
+      : selection.status === "stale" ? "行情待更新" : "暂无行情样本"
+    : "";
+  $("market-selection-status").title = selection?.message || "";
   $("market-city-options").replaceChildren();
   if (!enabled || !market.available) return;
   const regions = [...(market.regions || [])].sort((a, b) => (b.city === "中国") - (a.city === "中国") || b.jobs - a.jobs).slice(0, 7);

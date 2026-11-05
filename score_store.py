@@ -11,11 +11,13 @@ from scoring import VERSION, fingerprint
 
 
 def remember(report: dict, text: str, job: str) -> None:
-    key = fingerprint({"resume_hash": fingerprint(text), "job_hash": fingerprint(job), "context": report["context"],
-                       "rule_version": VERSION, "market_snapshot": report["market"].get("snapshot_id"),
-                       "market_status": report["market"]["status"]})
+    if report.get("source") != "ai" or report.get("overall_score") is None:
+        raise ValueError("only completed AI assessments can be stored")
     groups = {"quality": report["score_items"], "job": report["requirements"], "market": report["market"]["items"], "application": report["application"]["items"]}
     values = {group: {item["id"]: item["points"] for item in items} for group, items in groups.items()}
+    key = fingerprint({"resume_hash": fingerprint(text), "job_hash": fingerprint(job), "context": report["context"],
+                       "rule_version": VERSION, "model": report["meta"].get("model"), "points": values,
+                       "market_snapshot": report["market"].get("snapshot_id"), "market_status": report["market"]["status"]})
     payload = json.dumps(values, sort_keys=True, separators=(",", ":"))
     meta = report["meta"]
     meta.update(score_snapshot_id=key[:20], score_cache="unavailable", scored_at=datetime.now(timezone.utc).isoformat())
@@ -29,11 +31,11 @@ def remember(report: dict, text: str, job: str) -> None:
             connection.execute("INSERT OR IGNORE INTO scores VALUES (?, ?, ?, ?)", (key, VERSION, payload, meta["scored_at"]))
             stored = connection.execute("SELECT points, created_at FROM scores WHERE id=?", (key,)).fetchone()
             if stored[0] != payload:
-                # 每次重算校验；损坏或不一致的缓存不能覆盖规则结果。
+                # 保存本次AI给出的分值；损坏记录不能覆盖本次评估。
                 connection.execute("UPDATE scores SET points=?, created_at=? WHERE id=?", (payload, meta["scored_at"], key))
                 meta["score_cache"] = "repaired"
             else:
                 meta["score_cache"] = "hit" if stored[1] != meta["scored_at"] else "stored"
                 meta["scored_at"] = stored[1]
     except (OSError, sqlite3.Error):
-        logging.getLogger("resume_analyzer").warning("Score snapshot storage unavailable; deterministic calculation retained")
+        logging.getLogger("resume_analyzer").warning("Score snapshot storage unavailable; completed AI assessment retained")

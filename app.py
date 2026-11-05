@@ -19,10 +19,11 @@ from fastapi.staticfiles import StaticFiles
 from pypdf import PdfReader
 from starlette.concurrency import run_in_threadpool
 
-from analyzer import AIError, ai_analyze, ai_analyze_stream, ai_configured, local_analyze
+from analyzer import AIError, ai_analyze, ai_analyze_stream, ai_configured, prepare_analysis
 import market
 from score_store import remember
 from scoring import INDUSTRIES, LEVELS, ROLES, VERSION
+from rubric import POLICY, criteria
 
 
 ROOT = Path(__file__).resolve().parent
@@ -31,8 +32,8 @@ MAX_FILE_BYTES = 8 * 1024 * 1024
 MAX_RESUME_CHARS = 40_000
 MAX_JOB_CHARS = 12_000
 
-app = FastAPI(title="简历透镜 · AI 简历分析", version="3.0.1",
-              description="上传简历或粘贴文本，进行本地关键词分析或大模型深度分析。")
+app = FastAPI(title="简历透镜 · AI 简历分析", version="4.0.0",
+              description="上传简历或粘贴文本，由AI按严格细则评分并提供可追溯依据。")
 app.mount("/static", StaticFiles(directory=ROOT / "static"), name="static")
 
 
@@ -158,14 +159,13 @@ def market_snapshot():
     return JSONResponse(snapshot, headers={"Content-Disposition": 'attachment; filename="market-snapshot.json"'})
 
 
-@app.get("/api/rubric", summary="查看固定评分条目及规则版本")
+@app.get("/api/rubric", summary="查看AI评分细则与版本")
 def rubric(level: str = ""):
     if level and level not in LEVELS:
         raise HTTPException(400, "职级选项无效。")
-    report = local_analyze("", "", {"level": level})
     return {"version": VERSION, "max_points": 100,
-            "calibration": "固定规则初始版本；尚未使用真实招聘结果标定录用概率。",
-            "items": [{key: item[key] for key in ("id", "dimension", "title", "max_points", "rule")} for item in report["score_items"]]}
+            "scorer": "ai", "calibration": POLICY,
+            "items": [{key: item[key] for key in ("id", "dimension", "title", "max_points", "rule")} for item in criteria()]}
 
 
 @app.post("/api/analyze", summary="分析简历，stream=true 时实时返回 SSE 事件",
@@ -174,7 +174,7 @@ async def analyze(
     file: Annotated[UploadFile | None, File(description="PDF / DOCX / TXT，最大 8 MB")] = None,
     resume_text: Annotated[str, Form(description="简历正文，60—40000 字符")] = "",
     job_description: Annotated[str, Form(description="岗位描述，最多 12000 字符")] = "",
-    use_ai: Annotated[bool, Form(description="是否使用已配置的大模型服务")] = False,
+    use_ai: Annotated[bool, Form(description="须启用AI评分；不再提供固定规则分数")] = True,
     stream: Annotated[bool, Form(description="是否通过 SSE 实时返回分析进度和结果")] = False,
     industry: Annotated[str, Form(description="目标行业，可选值见 /api/market")] = "",
     role: Annotated[str, Form(description="岗位族，可选值见 /api/market")] = "",
@@ -204,36 +204,39 @@ async def analyze(
     if len(city.strip()) > 80:
         raise HTTPException(400, "地区最多支持80字符。")
     context = {"industry": industry, "role": role, "level": level, "city": city.strip()}
-    report = await run_in_threadpool(local_analyze, text, job, context)
+    if not use_ai:
+        raise HTTPException(400, "当前版本由AI按细则评分，请启用AI评分。")
+    if not ai_configured():
+        raise HTTPException(503, "AI评分服务尚未配置，请配置模型后重试。")
+    report = await run_in_threadpool(prepare_analysis, text, job, context)
     report["source_text"] = {"resume": text, "job": job}
     await run_in_threadpool(market.attach, report, text, job, None if use_market else {})
     if not use_market:
         report["market"].update(status="disabled", message="本次未启用行情评估。")
-    await run_in_threadpool(remember, report, text, job)
-    if use_ai and not ai_configured():
-        raise HTTPException(400, "深度分析暂不可用，请先使用基础分析。")
+
+    def finalize(assessed):
+        market.combine(assessed)
+        remember(assessed, text, job)
+        return assessed
+
     if stream:
         async def events():
             def encode(event):
                 return "data: " + json.dumps(event, ensure_ascii=True) + "\n\n"
             try:
-                if use_ai:
-                    async for event in ai_analyze_stream(text, job, report):
-                        yield encode(event)
-                else:
-                    yield encode({"type": "complete", "report": report})
+                async for event in ai_analyze_stream(text, job, report):
+                    if event["type"] == "complete":
+                        await run_in_threadpool(finalize, event["report"])
+                    yield encode(event)
             except AIError as exc:
-                report.update(advice_status="failed", advice_error=str(exc))
-                yield encode({"type": "advice_error", "message": str(exc)})
-                yield encode({"type": "complete", "report": report})
+                yield encode({"type": "error", "message": str(exc)})
         return StreamingResponse(events(), media_type="text/event-stream",
                                  headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"})
-    if use_ai:
-        try:
-            report = await ai_analyze(text, job, report)
-        except AIError as exc:
-            report.update(advice_status="failed", advice_error=str(exc))
-    return report
+    try:
+        assessed = await ai_analyze(text, job, report)
+    except AIError as exc:
+        raise HTTPException(502, str(exc)) from None
+    return await run_in_threadpool(finalize, assessed)
 
 
 if __name__ == "__main__":

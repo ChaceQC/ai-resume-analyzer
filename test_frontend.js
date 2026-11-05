@@ -87,7 +87,7 @@ test("dragged files work without DataTransfer and unsupported streaming falls ba
   context.ReadableStream = undefined;
   context.TextDecoder = undefined;
   context.renderReport = () => {};
-  element("use-ai").checked = true;
+  vm.runInContext("aiAvailable = true", context);
   let form;
   context.fetch = async (_url, options) => {
     form = options.body;
@@ -108,14 +108,21 @@ test("guide opens and closes when native dialog methods are unavailable", () => 
   assert.equal(element("guide-dialog").open, undefined);
 });
 
-test("AI advice failure preserves a complete rule report", async () => {
+test("AI scoring failures are errors without a fallback report", async () => {
   const { context } = browser();
-  const response = sseResponse('data: {"type":"advice_error","message":"AI建议超时"}\n\n'
-    + 'data: {"type":"complete","report":{"overall_score":76,"source":"local","advice_status":"failed"}}\n\n');
-  const report = await context.readAnalysis(response, () => {});
-  assert.equal(report.overall_score, 76);
-  assert.equal(report.source, "local");
-  assert.equal(report.advice_status, "failed");
+  await assert.rejects(context.readAnalysis(sseResponse('data: {"type":"error","message":"AI评分超时"}\n\n'), () => {}), /AI评分超时/);
+});
+
+test("a failed new assessment cannot display the previous score", async () => {
+  const { context, element } = browser();
+  vm.runInContext('aiAvailable = true; currentReport = {overall_score: 99}', context);
+  element("drop-zone").listeners.drop({ dataTransfer: { files: [new File(["resume"], "resume.txt")] } });
+  context.fetch = async () => new Response('{"detail":"AI评分超时"}', { status: 502, headers: { "content-type": "application/json" } });
+  await element("analysis-form").listeners.submit({ preventDefault() {} });
+  assert.equal(element("report").hidden, true);
+  assert.equal(element("error-message").hidden, false);
+  assert.match(element("error-message").textContent, /AI评分超时/);
+  assert.equal(vm.runInContext("currentReport", context), null);
 });
 
 test("evidence viewer uses Unicode code point offsets and a safe text highlight", () => {
@@ -128,21 +135,18 @@ test("evidence viewer uses Unicode code point offsets and a safe text highlight"
   assert.equal(element("evidence-dialog").open, "");
 });
 
-test("rule ledger, missing market data and advice status are rendered explicitly", () => {
+test("AI ledger and missing market data are rendered explicitly", () => {
   const { context, element } = browser();
   context.renderScoring({
-    meta: { scoring_version: "3.0.0", score_snapshot_id: "example", score_cache: "hit" },
+    meta: { scoring_version: "4.0.0", score_snapshot_id: "example", model: "test-model" },
     dimensions: [{ label: "成果表达", points: 3, max_points: 5 }],
     score_items: [{ id: "results.example", dimension: "成果表达", title: "验证条件", points: 3, max_points: 5, rule: "固定条件", evidence: [] }],
-    requirements: [], advice_error: "建议超时", market: { score: null, message: "上海样本不足", items: [], sample_count: 0, company_count: 0 },
+    requirements: [], market: { score: null, message: "上海样本不足", items: [], sample_count: 0, company_count: 0 },
     application: { score: null, message: "未评估", items: [] },
   });
   assert.equal(element("score-ledger-total").textContent, "3 / 5 分");
   assert.equal(element("score-items").children.length, 1);
   assert.equal(element("market-score").textContent, "未评估");
-  assert.equal(element("advice-summary").hidden, false);
-  assert.match(element("advice-summary").textContent, /规则评分已完成/);
-  assert.match(element("score-version").textContent, /example/);
 });
 
 test("market coverage keeps a missing city until the user chooses another region", async () => {
@@ -150,12 +154,12 @@ test("market coverage keeps a missing city until the user chooses another region
   element("use-market").checked = true;
   element("target-city").value = "深圳";
   const coverage = { available: true, jobs: 300, companies: 4,
-    selection: { status: "insufficient", message: "深圳只有 12 条职位、2 家企业，暂不计分。" },
+    selection: { status: "insufficient", message: "深圳只有 12 条职位、2 家企业，暂不计分。", sample_count: 12, company_count: 2 },
     regions: [{ city: "中国", jobs: 150, companies: 3 }, { city: "北京", jobs: 60, companies: 3 }],
   };
   context.renderMarketCoverage(coverage);
   assert.equal(element("target-city").value, "深圳");
-  assert.match(element("market-selection-status").textContent, /深圳.*暂不计分/);
+  assert.match(element("market-selection-status").textContent, /12个岗位.*2家企业.*样本不足/);
   let requested;
   context.fetch = async (url) => { requested = new URL(url, "http://localhost"); return new Response(JSON.stringify(coverage)); };
   element("market-city-options").children.find((button) => button.textContent.startsWith("北京")).listeners.click();
@@ -173,11 +177,11 @@ test("older coverage responses cannot overwrite the latest city selection", asyn
   element("target-city").value = "上海";
   const latestRequest = context.refreshMarketCoverage();
   const response = (city) => new Response(JSON.stringify({ available: true, jobs: 80, companies: 3, regions: [],
-    selection: { status: "insufficient", message: city + "样本不足" } }));
+    selection: { status: "insufficient", message: city + "样本不足", sample_count: city === "上海" ? 20 : 10, company_count: 2 } }));
   pending[1].resolve(response("上海"));
   await latestRequest;
   pending[0].resolve(response("北京"));
   await oldRequest;
-  assert.equal(element("market-selection-status").textContent, "上海样本不足");
+  assert.match(element("market-selection-status").textContent, /20个岗位.*样本不足/);
   assert.equal(element("target-city").value, "上海");
 });
