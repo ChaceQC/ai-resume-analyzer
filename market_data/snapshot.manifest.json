@@ -1,0 +1,845 @@
+{
+  "snapshot_id": "8ce8ac4af6e34550cd955a73123e7da27b681a63e01c8f0d9b30ed00f573bd5e",
+  "captured_at": "2026-11-05T02:49:11.728858+00:00",
+  "extractor_version": "3.0.0",
+  "scope": "所列国际企业的公开招聘样本，按企业、岗位族和职级限额抽取；不代表全国或整个行业。",
+  "selection": "企业公开职位；最近60天更新；同企业/岗位族/职级最多25条；公司、职位、地点、要求去重。更新时间不等于首次发布时间。",
+  "job_count": 2310,
+  "company_count": 15,
+  "sources": [
+    {
+      "company": "Canonical",
+      "url": "https://boards-api.greenhouse.io/v1/boards/canonical/jobs?content=true",
+      "captured_at": "2026-11-05T02:49:11.912860+00:00",
+      "raw_count": 316
+    },
+    {
+      "company": "GitLab",
+      "url": "https://boards-api.greenhouse.io/v1/boards/gitlab/jobs?content=true",
+      "captured_at": "2026-11-05T02:49:11.728858+00:00",
+      "raw_count": 243
+    },
+    {
+      "company": "MongoDB",
+      "url": "https://boards-api.greenhouse.io/v1/boards/mongodb/jobs?content=true",
+      "captured_at": "2026-11-05T02:49:13.036870+00:00",
+      "raw_count": 361
+    },
+    {
+      "company": "Cloudflare",
+      "url": "https://boards-api.greenhouse.io/v1/boards/cloudflare/jobs?content=true",
+      "captured_at": "2026-11-05T02:49:12.060861+00:00",
+      "raw_count": 462
+    },
+    {
+      "company": "Datadog",
+      "url": "https://boards-api.greenhouse.io/v1/boards/datadog/jobs?content=true",
+      "captured_at": "2026-11-05T02:49:11.956860+00:00",
+      "raw_count": 396
+    },
+    {
+      "company": "Stripe",
+      "url": "https://boards-api.greenhouse.io/v1/boards/stripe/jobs?content=true",
+      "captured_at": "2026-11-05T02:49:11.868859+00:00",
+      "raw_count": 759
+    },
+    {
+      "company": "Affirm",
+      "url": "https://boards-api.greenhouse.io/v1/boards/affirm/jobs?content=true",
+      "captured_at": "2026-11-05T02:51:29.498149+00:00",
+      "raw_count": 234
+    },
+    {
+      "company": "Brex",
+      "url": "https://boards-api.greenhouse.io/v1/boards/brex/jobs?content=true",
+      "captured_at": "2026-11-05T02:51:29.698151+00:00",
+      "raw_count": 275
+    },
+    {
+      "company": "Robinhood",
+      "url": "https://boards-api.greenhouse.io/v1/boards/robinhood/jobs?content=true",
+      "captured_at": "2026-11-05T02:51:29.118146+00:00",
+      "raw_count": 154
+    },
+    {
+      "company": "Oscar Health",
+      "url": "https://boards-api.greenhouse.io/v1/boards/oscar/jobs?content=true",
+      "captured_at": "2026-11-05T02:51:29.486149+00:00",
+      "raw_count": 214
+    },
+    {
+      "company": "Flatiron Health",
+      "url": "https://boards-api.greenhouse.io/v1/boards/flatironhealth/jobs?content=true",
+      "captured_at": "2026-11-05T02:51:28.986144+00:00",
+      "raw_count": 25
+    },
+    {
+      "company": "Natera",
+      "url": "https://boards-api.greenhouse.io/v1/boards/natera/jobs?content=true",
+      "captured_at": "2026-11-05T02:59:58.614920+00:00",
+      "raw_count": 225
+    },
+    {
+      "company": "SpaceX",
+      "url": "https://boards-api.greenhouse.io/v1/boards/spacex/jobs?content=true",
+      "captured_at": "2026-11-05T02:51:30.178155+00:00",
+      "raw_count": 2893
+    },
+    {
+      "company": "Anduril",
+      "url": "https://boards-api.greenhouse.io/v1/boards/andurilindustries/jobs?content=true",
+      "captured_at": "2026-11-05T02:51:30.726161+00:00",
+      "raw_count": 2568
+    },
+    {
+      "company": "Rocket Lab",
+      "url": "https://boards-api.greenhouse.io/v1/boards/rocketlab/jobs?content=true",
+      "captured_at": "2026-11-05T02:59:58.766921+00:00",
+      "raw_count": 553
+    }
+  ],
+  "coverage": [
+    {
+      "industry": "engineering",
+      "role": "data",
+      "level": "junior",
+      "jobs": 41,
+      "companies": 2
+    },
+    {
+      "industry": "engineering",
+      "role": "data",
+      "level": "manager",
+      "jobs": 4,
+      "companies": 2
+    },
+    {
+      "industry": "engineering",
+      "role": "data",
+      "level": "senior",
+      "jobs": 27,
+      "companies": 3
+    },
+    {
+      "industry": "engineering",
+      "role": "design",
+      "level": "graduate",
+      "jobs": 4,
+      "companies": 2
+    },
+    {
+      "industry": "engineering",
+      "role": "design",
+      "level": "junior",
+      "jobs": 54,
+      "companies": 3
+    },
+    {
+      "industry": "engineering",
+      "role": "design",
+      "level": "manager",
+      "jobs": 3,
+      "companies": 3
+    },
+    {
+      "industry": "engineering",
+      "role": "design",
+      "level": "senior",
+      "jobs": 32,
+      "companies": 3
+    },
+    {
+      "industry": "engineering",
+      "role": "engineering",
+      "level": "graduate",
+      "jobs": 46,
+      "companies": 3
+    },
+    {
+      "industry": "engineering",
+      "role": "engineering",
+      "level": "junior",
+      "jobs": 75,
+      "companies": 3
+    },
+    {
+      "industry": "engineering",
+      "role": "engineering",
+      "level": "manager",
+      "jobs": 52,
+      "companies": 3
+    },
+    {
+      "industry": "engineering",
+      "role": "engineering",
+      "level": "senior",
+      "jobs": 75,
+      "companies": 3
+    },
+    {
+      "industry": "engineering",
+      "role": "finance",
+      "level": "graduate",
+      "jobs": 1,
+      "companies": 1
+    },
+    {
+      "industry": "engineering",
+      "role": "finance",
+      "level": "junior",
+      "jobs": 25,
+      "companies": 3
+    },
+    {
+      "industry": "engineering",
+      "role": "finance",
+      "level": "manager",
+      "jobs": 21,
+      "companies": 2
+    },
+    {
+      "industry": "engineering",
+      "role": "finance",
+      "level": "senior",
+      "jobs": 21,
+      "companies": 3
+    },
+    {
+      "industry": "engineering",
+      "role": "people",
+      "level": "junior",
+      "jobs": 48,
+      "companies": 3
+    },
+    {
+      "industry": "engineering",
+      "role": "people",
+      "level": "manager",
+      "jobs": 2,
+      "companies": 1
+    },
+    {
+      "industry": "engineering",
+      "role": "people",
+      "level": "senior",
+      "jobs": 25,
+      "companies": 1
+    },
+    {
+      "industry": "engineering",
+      "role": "product",
+      "level": "graduate",
+      "jobs": 13,
+      "companies": 2
+    },
+    {
+      "industry": "engineering",
+      "role": "product",
+      "level": "junior",
+      "jobs": 58,
+      "companies": 3
+    },
+    {
+      "industry": "engineering",
+      "role": "product",
+      "level": "manager",
+      "jobs": 60,
+      "companies": 3
+    },
+    {
+      "industry": "engineering",
+      "role": "product",
+      "level": "senior",
+      "jobs": 39,
+      "companies": 3
+    },
+    {
+      "industry": "engineering",
+      "role": "sales",
+      "level": "graduate",
+      "jobs": 5,
+      "companies": 2
+    },
+    {
+      "industry": "engineering",
+      "role": "sales",
+      "level": "junior",
+      "jobs": 14,
+      "companies": 1
+    },
+    {
+      "industry": "engineering",
+      "role": "sales",
+      "level": "manager",
+      "jobs": 43,
+      "companies": 3
+    },
+    {
+      "industry": "engineering",
+      "role": "sales",
+      "level": "senior",
+      "jobs": 4,
+      "companies": 2
+    },
+    {
+      "industry": "engineering",
+      "role": "software",
+      "level": "graduate",
+      "jobs": 32,
+      "companies": 3
+    },
+    {
+      "industry": "engineering",
+      "role": "software",
+      "level": "junior",
+      "jobs": 56,
+      "companies": 3
+    },
+    {
+      "industry": "engineering",
+      "role": "software",
+      "level": "manager",
+      "jobs": 15,
+      "companies": 3
+    },
+    {
+      "industry": "engineering",
+      "role": "software",
+      "level": "senior",
+      "jobs": 65,
+      "companies": 3
+    },
+    {
+      "industry": "finance",
+      "role": "data",
+      "level": "graduate",
+      "jobs": 10,
+      "companies": 2
+    },
+    {
+      "industry": "finance",
+      "role": "data",
+      "level": "junior",
+      "jobs": 43,
+      "companies": 4
+    },
+    {
+      "industry": "finance",
+      "role": "data",
+      "level": "manager",
+      "jobs": 9,
+      "companies": 2
+    },
+    {
+      "industry": "finance",
+      "role": "data",
+      "level": "senior",
+      "jobs": 14,
+      "companies": 4
+    },
+    {
+      "industry": "finance",
+      "role": "design",
+      "level": "graduate",
+      "jobs": 2,
+      "companies": 2
+    },
+    {
+      "industry": "finance",
+      "role": "design",
+      "level": "junior",
+      "jobs": 20,
+      "companies": 2
+    },
+    {
+      "industry": "finance",
+      "role": "design",
+      "level": "manager",
+      "jobs": 2,
+      "companies": 1
+    },
+    {
+      "industry": "finance",
+      "role": "design",
+      "level": "senior",
+      "jobs": 19,
+      "companies": 4
+    },
+    {
+      "industry": "finance",
+      "role": "engineering",
+      "level": "manager",
+      "jobs": 1,
+      "companies": 1
+    },
+    {
+      "industry": "finance",
+      "role": "engineering",
+      "level": "senior",
+      "jobs": 1,
+      "companies": 1
+    },
+    {
+      "industry": "finance",
+      "role": "finance",
+      "level": "graduate",
+      "jobs": 7,
+      "companies": 2
+    },
+    {
+      "industry": "finance",
+      "role": "finance",
+      "level": "junior",
+      "jobs": 24,
+      "companies": 3
+    },
+    {
+      "industry": "finance",
+      "role": "finance",
+      "level": "manager",
+      "jobs": 19,
+      "companies": 4
+    },
+    {
+      "industry": "finance",
+      "role": "finance",
+      "level": "senior",
+      "jobs": 2,
+      "companies": 2
+    },
+    {
+      "industry": "finance",
+      "role": "people",
+      "level": "junior",
+      "jobs": 17,
+      "companies": 3
+    },
+    {
+      "industry": "finance",
+      "role": "people",
+      "level": "senior",
+      "jobs": 7,
+      "companies": 3
+    },
+    {
+      "industry": "finance",
+      "role": "product",
+      "level": "graduate",
+      "jobs": 6,
+      "companies": 2
+    },
+    {
+      "industry": "finance",
+      "role": "product",
+      "level": "junior",
+      "jobs": 37,
+      "companies": 4
+    },
+    {
+      "industry": "finance",
+      "role": "product",
+      "level": "manager",
+      "jobs": 64,
+      "companies": 4
+    },
+    {
+      "industry": "finance",
+      "role": "product",
+      "level": "senior",
+      "jobs": 5,
+      "companies": 3
+    },
+    {
+      "industry": "finance",
+      "role": "sales",
+      "level": "junior",
+      "jobs": 48,
+      "companies": 3
+    },
+    {
+      "industry": "finance",
+      "role": "sales",
+      "level": "manager",
+      "jobs": 56,
+      "companies": 4
+    },
+    {
+      "industry": "finance",
+      "role": "sales",
+      "level": "senior",
+      "jobs": 2,
+      "companies": 1
+    },
+    {
+      "industry": "finance",
+      "role": "software",
+      "level": "graduate",
+      "jobs": 30,
+      "companies": 3
+    },
+    {
+      "industry": "finance",
+      "role": "software",
+      "level": "junior",
+      "jobs": 55,
+      "companies": 4
+    },
+    {
+      "industry": "finance",
+      "role": "software",
+      "level": "manager",
+      "jobs": 5,
+      "companies": 1
+    },
+    {
+      "industry": "finance",
+      "role": "software",
+      "level": "senior",
+      "jobs": 86,
+      "companies": 4
+    },
+    {
+      "industry": "healthcare",
+      "role": "data",
+      "level": "junior",
+      "jobs": 9,
+      "companies": 2
+    },
+    {
+      "industry": "healthcare",
+      "role": "data",
+      "level": "manager",
+      "jobs": 8,
+      "companies": 2
+    },
+    {
+      "industry": "healthcare",
+      "role": "data",
+      "level": "senior",
+      "jobs": 15,
+      "companies": 2
+    },
+    {
+      "industry": "healthcare",
+      "role": "design",
+      "level": "junior",
+      "jobs": 6,
+      "companies": 3
+    },
+    {
+      "industry": "healthcare",
+      "role": "design",
+      "level": "manager",
+      "jobs": 3,
+      "companies": 1
+    },
+    {
+      "industry": "healthcare",
+      "role": "design",
+      "level": "senior",
+      "jobs": 4,
+      "companies": 2
+    },
+    {
+      "industry": "healthcare",
+      "role": "finance",
+      "level": "junior",
+      "jobs": 9,
+      "companies": 2
+    },
+    {
+      "industry": "healthcare",
+      "role": "finance",
+      "level": "manager",
+      "jobs": 5,
+      "companies": 1
+    },
+    {
+      "industry": "healthcare",
+      "role": "healthcare",
+      "level": "junior",
+      "jobs": 32,
+      "companies": 3
+    },
+    {
+      "industry": "healthcare",
+      "role": "healthcare",
+      "level": "manager",
+      "jobs": 7,
+      "companies": 3
+    },
+    {
+      "industry": "healthcare",
+      "role": "healthcare",
+      "level": "senior",
+      "jobs": 1,
+      "companies": 1
+    },
+    {
+      "industry": "healthcare",
+      "role": "people",
+      "level": "junior",
+      "jobs": 1,
+      "companies": 1
+    },
+    {
+      "industry": "healthcare",
+      "role": "people",
+      "level": "senior",
+      "jobs": 1,
+      "companies": 1
+    },
+    {
+      "industry": "healthcare",
+      "role": "product",
+      "level": "junior",
+      "jobs": 5,
+      "companies": 1
+    },
+    {
+      "industry": "healthcare",
+      "role": "product",
+      "level": "manager",
+      "jobs": 33,
+      "companies": 3
+    },
+    {
+      "industry": "healthcare",
+      "role": "product",
+      "level": "senior",
+      "jobs": 4,
+      "companies": 1
+    },
+    {
+      "industry": "healthcare",
+      "role": "sales",
+      "level": "junior",
+      "jobs": 8,
+      "companies": 2
+    },
+    {
+      "industry": "healthcare",
+      "role": "sales",
+      "level": "manager",
+      "jobs": 5,
+      "companies": 2
+    },
+    {
+      "industry": "healthcare",
+      "role": "sales",
+      "level": "senior",
+      "jobs": 1,
+      "companies": 1
+    },
+    {
+      "industry": "healthcare",
+      "role": "software",
+      "level": "junior",
+      "jobs": 3,
+      "companies": 1
+    },
+    {
+      "industry": "healthcare",
+      "role": "software",
+      "level": "senior",
+      "jobs": 18,
+      "companies": 3
+    },
+    {
+      "industry": "software",
+      "role": "data",
+      "level": "graduate",
+      "jobs": 1,
+      "companies": 1
+    },
+    {
+      "industry": "software",
+      "role": "data",
+      "level": "junior",
+      "jobs": 16,
+      "companies": 5
+    },
+    {
+      "industry": "software",
+      "role": "data",
+      "level": "manager",
+      "jobs": 10,
+      "companies": 3
+    },
+    {
+      "industry": "software",
+      "role": "data",
+      "level": "senior",
+      "jobs": 13,
+      "companies": 4
+    },
+    {
+      "industry": "software",
+      "role": "design",
+      "level": "junior",
+      "jobs": 2,
+      "companies": 2
+    },
+    {
+      "industry": "software",
+      "role": "design",
+      "level": "manager",
+      "jobs": 3,
+      "companies": 2
+    },
+    {
+      "industry": "software",
+      "role": "design",
+      "level": "senior",
+      "jobs": 4,
+      "companies": 4
+    },
+    {
+      "industry": "software",
+      "role": "engineering",
+      "level": "junior",
+      "jobs": 6,
+      "companies": 2
+    },
+    {
+      "industry": "software",
+      "role": "engineering",
+      "level": "manager",
+      "jobs": 2,
+      "companies": 2
+    },
+    {
+      "industry": "software",
+      "role": "engineering",
+      "level": "senior",
+      "jobs": 3,
+      "companies": 2
+    },
+    {
+      "industry": "software",
+      "role": "finance",
+      "level": "graduate",
+      "jobs": 3,
+      "companies": 2
+    },
+    {
+      "industry": "software",
+      "role": "finance",
+      "level": "junior",
+      "jobs": 9,
+      "companies": 4
+    },
+    {
+      "industry": "software",
+      "role": "finance",
+      "level": "manager",
+      "jobs": 10,
+      "companies": 5
+    },
+    {
+      "industry": "software",
+      "role": "finance",
+      "level": "senior",
+      "jobs": 2,
+      "companies": 2
+    },
+    {
+      "industry": "software",
+      "role": "people",
+      "level": "junior",
+      "jobs": 14,
+      "companies": 3
+    },
+    {
+      "industry": "software",
+      "role": "people",
+      "level": "manager",
+      "jobs": 11,
+      "companies": 3
+    },
+    {
+      "industry": "software",
+      "role": "people",
+      "level": "senior",
+      "jobs": 3,
+      "companies": 3
+    },
+    {
+      "industry": "software",
+      "role": "product",
+      "level": "graduate",
+      "jobs": 1,
+      "companies": 1
+    },
+    {
+      "industry": "software",
+      "role": "product",
+      "level": "junior",
+      "jobs": 14,
+      "companies": 4
+    },
+    {
+      "industry": "software",
+      "role": "product",
+      "level": "manager",
+      "jobs": 68,
+      "companies": 5
+    },
+    {
+      "industry": "software",
+      "role": "product",
+      "level": "senior",
+      "jobs": 7,
+      "companies": 5
+    },
+    {
+      "industry": "software",
+      "role": "sales",
+      "level": "junior",
+      "jobs": 98,
+      "companies": 5
+    },
+    {
+      "industry": "software",
+      "role": "sales",
+      "level": "manager",
+      "jobs": 75,
+      "companies": 5
+    },
+    {
+      "industry": "software",
+      "role": "sales",
+      "level": "senior",
+      "jobs": 59,
+      "companies": 4
+    },
+    {
+      "industry": "software",
+      "role": "software",
+      "level": "graduate",
+      "jobs": 7,
+      "companies": 3
+    },
+    {
+      "industry": "software",
+      "role": "software",
+      "level": "junior",
+      "jobs": 48,
+      "companies": 4
+    },
+    {
+      "industry": "software",
+      "role": "software",
+      "level": "manager",
+      "jobs": 8,
+      "companies": 3
+    },
+    {
+      "industry": "software",
+      "role": "software",
+      "level": "senior",
+      "jobs": 84,
+      "companies": 5
+    }
+  ]
+}

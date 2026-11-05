@@ -9,23 +9,25 @@ const test = require("node:test");
 
 function browser() {
   const elements = new Map();
+  const makeElement = (tag) => ({
+    tagName: tag.toUpperCase(), listeners: {}, files: [], value: "", hidden: false, children: [],
+    lastChild: { textContent: "" }, classList: { add() {}, remove() {}, toggle() {} },
+    style: { setProperty() {} },
+    addEventListener(type, handler) { this.listeners[type] = handler; },
+    setAttribute(name, value) { this[name] = value; },
+    removeAttribute(name) { delete this[name]; },
+    querySelector(selector) { return element(`${this.id || tag} ${selector}`); },
+    querySelectorAll() { return []; },
+    replaceChildren(...values) { this.children = []; this.append(...values); },
+    append(...values) { for (const value of values) { value.parentElement = this; this.children.push(value); } },
+  });
   const element = (id) => {
-    if (!elements.has(id)) elements.set(id, {
-      listeners: {}, files: [], value: "", hidden: false,
-      lastChild: { textContent: "" }, classList: { add() {}, remove() {}, toggle() {} },
-      style: { setProperty() {} },
-      addEventListener(type, handler) { this.listeners[type] = handler; },
-      setAttribute(name, value) { this[name] = value; },
-      removeAttribute(name) { delete this[name]; },
-      querySelector(selector) { return element(`${id} ${selector}`); },
-      querySelectorAll() { return []; },
-      replaceChildren() {}, append() {},
-    });
+    if (!elements.has(id)) elements.set(id, { ...makeElement("div"), id });
     return elements.get(id);
   };
   const context = vm.createContext({
-    document: { getElementById: element, createElement: element },
-    window: { innerWidth: 1200 }, Response, ReadableStream, TextDecoder, FormData, AbortController,
+    document: { getElementById: element, createElement: makeElement },
+    window: { innerWidth: 1200 }, Response, ReadableStream, TextDecoder, FormData, AbortController, URL,
     setTimeout() { return 0; }, clearTimeout() {},
     fetch: async () => new Response(JSON.stringify({ ai_available: false })),
   });
@@ -104,4 +106,41 @@ test("guide opens and closes when native dialog methods are unavailable", () => 
   assert.equal(element("guide-dialog").open, "");
   element("guide-dialog form").listeners.submit({ preventDefault() {} });
   assert.equal(element("guide-dialog").open, undefined);
+});
+
+test("AI advice failure preserves a complete rule report", async () => {
+  const { context } = browser();
+  const response = sseResponse('data: {"type":"advice_error","message":"AI建议超时"}\n\n'
+    + 'data: {"type":"complete","report":{"overall_score":76,"source":"local","advice_status":"failed"}}\n\n');
+  const report = await context.readAnalysis(response, () => {});
+  assert.equal(report.overall_score, 76);
+  assert.equal(report.source, "local");
+  assert.equal(report.advice_status, "failed");
+});
+
+test("evidence viewer uses Unicode code point offsets and a safe text highlight", () => {
+  const { context, element } = browser();
+  vm.runInContext('currentReport = {source_text: {resume: "😀\\nPython 使用记录"}}', context);
+  context.openEvidence({ source: "resume", start: 2, end: 8, quote: "Python" });
+  assert.equal(element("evidence-location").textContent, "简历正文 · 第 2 行");
+  assert.equal(element("evidence-text").children[1].tagName, "MARK");
+  assert.equal(element("evidence-text").children[1].textContent, "Python");
+  assert.equal(element("evidence-dialog").open, "");
+});
+
+test("rule ledger, missing market data and advice status are rendered explicitly", () => {
+  const { context, element } = browser();
+  context.renderScoring({
+    meta: { scoring_version: "3.0.0", score_snapshot_id: "example", score_cache: "hit" },
+    dimensions: [{ label: "成果表达", points: 3, max_points: 5 }],
+    score_items: [{ id: "results.example", dimension: "成果表达", title: "验证条件", points: 3, max_points: 5, rule: "固定条件", evidence: [] }],
+    requirements: [], advice_error: "建议超时", market: { score: null, message: "上海样本不足", items: [], sample_count: 0, company_count: 0 },
+    application: { score: null, message: "未评估", items: [] },
+  });
+  assert.equal(element("score-ledger-total").textContent, "3 / 5 分");
+  assert.equal(element("score-items").children.length, 1);
+  assert.equal(element("market-score").textContent, "未评估");
+  assert.equal(element("advice-summary").hidden, false);
+  assert.match(element("advice-summary").textContent, /规则评分已完成/);
+  assert.match(element("score-version").textContent, /example/);
 });

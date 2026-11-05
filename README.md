@@ -1,153 +1,174 @@
 # 简历透镜 · AI 简历分析系统
 
-Python + FastAPI 开发的中文简历分析网页，前端使用原生 HTML / CSS / JavaScript，无需 Node.js 构建或数据库。Python 3.10+。
+Python 3.10+、FastAPI 与原生 HTML/CSS/JavaScript。支持 PDF、DOCX、TXT 上传或粘贴正文，输出固定规则评分、逐项原文依据、岗位要求匹配、招聘行情参考，以及可选的 AI 建议。
 
-支持 PDF、DOCX、TXT 上传与文本粘贴、岗位关键词匹配、多维评分、修改建议、项目描述改写、面试问题，以及报告下载。提供一键填充的示例数据；分析接口返回结构化 JSON。
-
-## 快速启动
-
-先获取源码：
+## 启动
 
 ```bash
 git clone https://github.com/ChaceQC/ai-resume-analyzer.git
 cd ai-resume-analyzer
-```
-
-然后在项目目录执行：
-
-```bash
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 python app.py
 ```
 
-如果已安装 uv，也可执行：
+打开 [http://127.0.0.1:5000](http://127.0.0.1:5000)，点击“用示例体验”，再开始分析。接口文档在 `/docs`。Windows 可使用 `py -m venv .venv`、`.venv\Scripts\activate`，然后执行安装和启动命令。已安装 uv 时，也可以使用 `uv venv`、`uv pip install --python .venv/bin/python -r requirements.txt`。
+
+默认监听本机；通过 `.env` 的 `HOST`、`PORT` 修改监听地址。使用 uvicorn 命令启动时，需要显式指定 `--host`、`--port`。
+
+## 评分稳定性与逐分溯源
+
+所有正式分数由固定规则计算，AI 只提供解释、建议、改写和面试问题。AI 返回的评分、维度名称和额外字段均不能覆盖正式评分。
+
+| 质量维度 | 满分 | 评价依据 |
+| --- | ---: | --- |
+| 信息完整度 | 10 | 姓名、邮箱、电话、教育信息是否提供 |
+| 内容结构 | 15 | 教育、能力、实践正文能否定位，经历是否有时间 |
+| 技能呈现 | 25 | 正向能力陈述、具体应用、实现方法、验证与反馈 |
+| 成果表达 | 35 | 行动、个人职责、交付结果、验证条件、前后对比 |
+| 表达清晰度 | 15 | 去空白篇幅、描述重复比例、信息具体程度 |
+
+20 个质量条目直接加总至 100 分。每个条目包含固定编号、满分、实得分、规则版本、原文引用和失分原因。维度栏中的百分制数值只是该维度的进度表示，整体分数使用条目实得分直接相加。完整规则可以在 `/api/rubric` 查看。
+
+支持“项目经历/相关实践/研究经历”等标题别名、段落软换行、全角字符与中英文表述。否定和未来计划不作为已具备的能力；没有个人职责关联的团队成果不直接作为个人成果。日期、电话、版本号和重复内容不会作为新增成果加分。
+
+岗位要求区分必备与加分条件，分别使用权重 3 和 1；“FastAPI 或 Django”按一个可替代要求计算。明确要求实践时，仅有技能陈述获得该条目一半分数。有明确学历、资格或经验年限要求时，按简历中的相应陈述检查；经验年限不从项目数量或教育时间推断。在读状态按岗位是否允许在读判断。未提供证据不等同于确认没有能力。
+
+相同简历、岗位、评估背景、规则和行情快照下，正式评分是确定的，不依赖模型采样或缓存。SQLite 同时保存评分指纹、各项分值及版本，每次分析重算校验；损坏缓存不会覆盖规则结果。重启后相同输入沿用同一评分快照标识与首次评分时间。换岗位、职级、规则或行情版本会生成不同快照。
+
+本次回归包含 20 次绕过缓存的重复计算，以及换行、标题别名、编码、否定、替代条件、重复成果、原文坐标和持久化检查。规则属于初始可解释版本，尚未使用专家标注或真实招聘结果进行统计标定；这些分数不代表录用概率或候选人百分位，也不核实简历业绩真伪。
+
+## 行情数据与适用范围
+
+随项目提供 2026-11-05 采集的国际企业公开招聘试点快照，覆盖软件互联网、金融科技、医疗健康、制造工程。样本清单、来源与覆盖分组见 `market_data/snapshot.manifest.json`；完整样本在 `market_data/snapshot.json.gz`，可通过网页或 `/api/market/snapshot` 下载 JSON。
+
+分析时按行业、岗位族、职业阶段和指定地区严格筛选。地区留空表示快照内不限地区，不代表国内市场。城市无样本时不会悄悄扩大范围。岗位族可从岗位标题预填，也可手动选择；行情需要行业、岗位族和职级都明确。
+
+试点规则：
+
+- 保留企业招聘接口当前列出的职位，筛选最近 60 天更新的记录；更新时间不等于首次发布时间。
+- 按公司、职位、地点和要求去重；每家企业的同岗位族、同职级最多取 25 条。
+- 单次行情评估至少需要 30 条样本、3 家企业。这是试点覆盖门槛，不是统计代表性的保证。
+- 取至少两家企业共同提及的能力，按提及企业数而非重复职位数分配权重，最多展示 10 项。
+- 对每项能力：具体应用得该项 100%，仅正向陈述得 25%，未提供证据得 0%；保存支持该要求的职位原句、链接、公司、地点和更新时间。
+- 行情快照超过 14 天、缺失、校验失败或样本不足时，行情分和投递综合分显示“未评估”；简历质量与岗位匹配仍正常计算。
+
+投递综合分只在岗位与行情都可评估时计算：质量 40 分、岗位 50 分、行情补充 10 分。行情补充只使用目标岗位未明确列出的能力，避免同一项技能在岗位与行情中重复加权；全部行情能力已被岗位要求覆盖时，采用质量 40 分、岗位 60 分。每个综合分条目指向原始评分条目，保留两位小数，最后统一四舍五入。
+
+公开职位样本反映这些企业的招聘要求，不能据此推断求职者供给、整个行业招聘增速、实际成交薪资或个人录用概率。原文片段按采集快照保存，职位页面后续可能变化。
+
+### 更新与导入
+
+分析请求不会自动联网抓取行情。需要刷新时，在项目目录运行：
 
 ```bash
-uv venv .venv
-uv pip install --python .venv/bin/python -r requirements.txt
-.venv/bin/python app.py
+.venv/bin/python update_market.py
+# 需要本地 HTTP 代理时：
+.venv/bin/python update_market.py --proxy http://127.0.0.1:7897
 ```
 
-打开 http://127.0.0.1:5000，点击“用示例体验”，再点击“开始分析简历”。接口文档位于 http://127.0.0.1:5000/docs。
+更新工具从所列企业的 Greenhouse 公开接口获取数据，生成校验指纹、压缩快照和可读清单；没有有效样本时保留原快照。可通过 `--output` 指定输出路径，通过 `--cache-dir` 复用 24 小时内的原始接口响应。原始响应不需要加入仓库。
 
-PyPI 连接困难时可在安装命令后添加 `--index-url https://mirrors.aliyun.com/pypi/simple`。
+也支持从公开或已授权的数据源导入标准 JSON：
 
-## 开启 AI 深度分析
-
-默认使用本地规则，运行时无需 API Key。本地评分基于信息与模块完整性、技能实践、具体行动与结果，以及表达清晰度。岗位匹配分为技能关键词覆盖率；不会把本地规则结果标记为 AI 输出。
-
-评分以实际运用和成果为重点，总分由各维度加权计算，AI 返回的总分也会按校验后的维度重新计算：
-
-| 维度 | 权重 | 主要依据 |
-| --- | --- | --- |
-| 信息完整度 | 10% | 姓名、联系方式与教育信息是否提供 |
-| 内容结构 | 15% | 核心模块是否有正文，教育和经历是否有时间信息 |
-| 技能呈现 | 25% | 技能是否用于具体行动，是否说明实现方法 |
-| 成果表达 | 35% | 做了什么、如何实现、个人贡献和实际结果 |
-| 表达清晰度 | 15% | 篇幅、分段和重复内容 |
-
-仅列技能关键词时，本地“技能呈现”最多 25 分；只有标题不算完整模块。日期、电话、版本号和无关数量不会作为成果加分，重复的成果描述只计一次。内置词表覆盖常见技术、数据、设计、运营和部分商务技能；词表之外的专业经验适合使用 AI 深度分析。
-
-AI 使用明确的评分档位：60—74 分为基本合格，75—84 分为较好，85—89 分为优秀，90 分以上需要全面、具体的实践与成果依据。AI 可以识别可验证的交付、质量和用户反馈，不强制要求数字。岗位匹配单独评价，不混入简历质量总分。
-
-首次配置时复制模板；已有 `.env` 时直接编辑，保留自己的配置：
+```json
+{
+  "captured_at": "2026-11-05T02:00:00+00:00",
+  "sources": [{"company": "示例企业", "url": "https://example.org/careers"}],
+  "entries": [{
+    "id": "job-001", "company": "示例企业", "industry": "software",
+    "title": "Software Engineer", "location": "Shanghai, China",
+    "url": "https://example.org/careers/job-001",
+    "updated_at": "2026-11-05T01:00:00+00:00",
+    "content": "<h2>Requirements</h2><p>Experience with Python and SQL.</p>"
+  }]
+}
+```
 
 ```bash
-cp .env.example .env
+.venv/bin/python update_market.py --input imported-jobs.json
 ```
 
-`.env` 已加入 Git 忽略规则，真实密钥不应提交到仓库。
+上面的示例用于说明格式，不是实际行情。行业代码包括 `software`、`finance`、`healthcare`、`engineering`；岗位和职级选项见 `/api/market`。导入来源需要有准确的采集时间、职位链接、更新时间与原文。
 
-编辑 `.env`，填写支持 Chat Completions 接口的服务，例如：
+## AI 建议
+
+基础分析和行情快照评估无需 API Key。首次配置可复制 `.env.example`，已有 `.env` 时直接编辑：
 
 ```dotenv
-AI_API_KEY=你的密钥
+AI_API_KEY=服务商密钥
 AI_BASE_URL=https://api.deepseek.com/v1
 AI_MODEL=deepseek-chat
-# 不需要代理时留空；使用本机 Clash 普通代理时这样填写。
-AI_PROXY=http://127.0.0.1:7897
+AI_PROXY=
 HOST=127.0.0.1
 PORT=5000
 ```
 
-`AI_BASE_URL` 支持域名、基础路径（例如 `/v1`）、自定义兼容路径或完整的 `/chat/completions` 地址，不会重复拼接接口路径；仅填写域名时自动补上 `/v1`，查询参数会保留。`AI_API_KEY` 是该服务商的密钥，`AI_MODEL` 必须是该服务支持的模型名。`AI_PROXY` 仅供后端调用模型时使用，支持 HTTP / HTTPS 代理；不需要时留空。系统代理不会自动传给 Python，使用 Clash 非 TUN 模式时可显式填写本机代理端口。
+基础 URL 支持域名、自定义路径或完整 `/chat/completions` 地址，保留查询参数。服务需要兼容 Chat Completions。后端支持 SSE、非流式 JSON、文本块和带 Markdown 围栏的 JSON；明确报告参数不支持时，可改用 `max_completion_tokens`、移除 `temperature` 或关闭上游流式请求。鉴权、限流和服务错误不会触发这些参数重试。
 
-保存后停止旧后端，重新运行 `.venv/bin/python app.py`，再刷新网页、开启“AI 深度分析”。兼容 Chat Completions 的 SSE 和非流式 JSON 返回、字符串或文本块内容，以及带 Markdown 围栏的 JSON 报告。服务明确返回参数不支持时，会按需切换 `max_completion_tokens`、移除 `temperature` 或关闭上游流式请求；鉴权失败、限流和服务故障不会触发这些重试。配置只保留在后端，前端没有密钥输入或配置说明；AI 开关默认关闭，配置缺失时隐藏。
+AI 只在用户开启开关后调用，简历全文、岗位和评分条目会发送至所配置的服务。密钥只保留在后端。AI 建议失败、截断或断流时，保留已经完成的规则评分，并明确显示建议失败原因；不会把不完整输出当作成功的 AI 建议。无法核实原句的单条改写会被省略。
 
-AI 调用默认启用 `stream: true`，无需额外开关。网页通过 `fetch` 持续读取 SSE，逐步展示总体评价，完整报告生成并校验通过后再显示评分与详细建议。浏览器缺少流式读取或文本解码能力时，自动改用 JSON 接口等待完整结果。上游网络读取超过 90 秒无响应会超时；网页等待时每次收到数据都会重置超时，不会因为总体耗时较长而中断持续输出。
+AI 上游读取超时为 90 秒；网页收到活动会重置等待时间。浏览器缺少流式能力时改用 JSON。Nginx 代理应关闭该接口的 `proxy_buffering`，并设置足够长的读取超时。
 
-AI 模式会将简历全文与岗位描述发送至配置的服务；密钥只保留在服务端环境变量中，不返回给浏览器。失败时显示具体错误，可手动切回本地分析。项目不保存上传文件或分析历史。
+配置修改后需要重新启动后端。
 
-## 接口示例
+## 接口
+
+| 接口 | 方法 | 用途 |
+| --- | --- | --- |
+| `/api/status` | GET | 服务、版本及 AI 配置状态 |
+| `/api/sample` | GET | 示例简历与岗位 |
+| `/api/rubric?level=junior` | GET | 固定评分条目和版本 |
+| `/api/market` | GET | 行情覆盖范围和评估选项 |
+| `/api/market/snapshot` | GET | 下载可追溯的公开招聘样本 |
+| `/api/analyze` | POST | 文件或正文分析；可返回 JSON 或 SSE |
 
 ```bash
 curl -X POST http://127.0.0.1:5000/api/analyze \
   -F 'file=@samples/resume.txt' \
   -F 'job_description=<samples/job.txt' \
-  -F 'use_ai=false'
+  -F 'industry=software' -F 'role=software' -F 'level=junior' \
+  -F 'use_market=true' -F 'use_ai=false'
 ```
 
-也可通过 `resume_text` 字段提交正文。提供文件时优先解析文件。
+可以使用 `resume_text` 替代文件；同时提供时文件优先。新增可选字段为 `industry`、`role`、`level`、`city`、`use_market`。`use_ai` 和 `stream` 默认关闭。
 
-流式调用（先填写后端 AI 配置）：
+`stream=true` 返回 SSE，事件包括 `status`、`summary`、`advice_error`、`complete`。`complete.report` 为完整报告；`advice_status=failed` 表示只有规则报告成功，AI 建议失败。未收到 `complete` 就断开时，不应当作成功。输入无效或未配置却请求 AI 时仍返回 HTTP 错误。
 
-```bash
-curl -N -X POST http://127.0.0.1:5000/api/analyze \
-  -F 'file=@samples/resume.txt' \
-  -F 'job_description=<samples/job.txt' \
-  -F 'use_ai=true' \
-  -F 'stream=true'
-```
+报告新增字段包括 `score_items`、`requirements`、`context`、`market`、`application`、`source_text`、`advice_status`。`source_text` 只随本次响应返回以定位原文。引用的 `start/end` 是 Python Unicode 码点的左闭右开坐标，浏览器按码点定位，兼容 emoji 和全角文本。旧版客户端应根据新字段展示规则来源和建议状态，不能把 `source=ai` 理解成分数由模型计算。
 
-`stream=true` 返回 `text/event-stream`，每条 `data:` 为 JSON，`type` 分别为 `status`、`summary`、`complete` 或 `error`。`summary.text` 为逐步增长的总体评价；`complete.report` 是最终完整报告。收到 `error` 或未收到 `complete` 就断开时，不应当作成功。默认 `stream=false` 保留原来的 JSON 返回方式，AI 上游调用优先使用流式读取。
+## 文件、数据与隐私
 
-如果前面加了 Nginx 反向代理，应为该接口设置 `proxy_buffering off;` 和足够长的 `proxy_read_timeout`；应用也会发送 `X-Accel-Buffering: no`。
+文件上限 8 MB，PDF 上限 30 页，简历正文 60—40000 字符，岗位描述上限 12000 字符。PDF 扫描件需先 OCR，旧版 DOC 需另存为 DOCX。
 
-| 接口 | 方法 | 用途 |
-| --- | --- | --- |
-| `/` | GET | 中文操作界面 |
-| `/api/status` | GET | 服务和 AI 配置状态 |
-| `/api/sample` | GET | 示例简历与岗位 |
-| `/api/analyze` | POST | 表单或文件分析，支持 SSE 实时返回 |
-| `/docs` | GET | Swagger 交互文档 |
+TXT 支持 UTF-8（含 BOM）、GB18030、UTF-16 和带 BOM 的 UTF-32；DOCX 按顺序读取正文、表格与嵌套表格，并提取页眉、页脚、正文文本框。
 
-文件上限 8 MB；PDF 上限 30 页；简历正文 60—40000 字符；岗位描述上限 12000 字符。扫描 PDF 需先 OCR；旧版 DOC 需另存为 DOCX。
-
-TXT 支持 UTF-8（含 BOM）、GB18030、UTF-16（含常见无 BOM 文件）和带 BOM 的 UTF-32。DOCX 按正文顺序读取段落、表格和嵌套表格，并提取页眉、页脚与正文文本框，保留模板中的联系方式。支持中英文模块名、常见英文学历、国际格式电话及全角技能字符。
+不保存上传文件、简历正文、岗位正文、引用原句或 AI 建议。默认 `data/scores.sqlite3` 只保存哈希、分值、规则版本与评分时间，`data/` 已加入 Git 忽略。可用 `SCORE_CACHE_PATH` 指定路径；删除数据库后可重新生成。数据库不可写时继续确定性计算，报告标明存储不可用。`MARKET_SNAPSHOT_PATH` 可指定另一份 JSON 或 JSON.GZ 行情快照；相对路径均基于项目目录。
 
 ## 验证
 
 ```bash
 .venv/bin/python -m unittest -v
-```
-
-测试覆盖技能边界、匹配分数、文本与 DOCX 表格解析、上传和长度限制、扫描 PDF 提示，以及模拟大模型流式成功、中文分段、输出无效、超时和中途断流。同时覆盖 PDF 换行后的原句匹配、数字字符串评分及可选改写异常。无法核实来源的单条改写会被省略，其他已校验的报告内容正常展示。测试不会调用外部大模型。
-
-评分回归覆盖关键词堆砌、无关数字、重复成果和具体实践的区分；兼容测试覆盖中英文、全角字符、多种文件编码、DOCX 阅读顺序、模型参数降级和非流式 JSON 返回。
-
-网页通信测试使用 Node.js 20+ 的内置测试工具（仅开发验证需要 Node.js）：
-
-```bash
 node --test test_frontend.js
 ```
 
-覆盖中文 UTF-8 分片、SSE 换行与断流、代理错误页面、拖拽上传、流式读取降级和对话框兼容处理。
+Python 测试覆盖评分区分度、20 次冷算、换行和别名、否定与未来计划、替代条件、必备与加分项、学历年限、团队归属、原文坐标、逐分加总、行情门槛、地区和时效、来源校验、企业去重、综合分去重、SQLite 重启/并发/损坏恢复，以及文件和模型接口回归。自动化测试使用模拟模型和明确标记的测试行情，不调用外部服务。
 
-## 项目文件
+网页测试使用 Node.js 20+ 内置模块，覆盖 SSE、UTF-8 分片、代理错误、建议失败后保留评分、拖拽、浏览器降级、Unicode 原文定位和未评估状态。运行应用不需要 Node.js。
+
+## 项目结构
 
 ```text
-app.py              FastAPI 路由、文件解析、启动入口
-analyzer.py         本地规则与大模型分析
-static/             中文网页、样式和交互
-samples/            示例简历与岗位描述
-test_app.py         自动化测试
-test_frontend.js    网页通信与浏览器兼容测试
-.env.example        可选的大模型配置模板
-requirements.txt    Python 依赖
+app.py                 路由、文件解析与评分流程
+scoring.py             确定性条目评分、事实与岗位要求
+score_store.py         不含原文的评分快照存储
+market.py              行情筛选、来源与综合分
+update_market.py       公开招聘快照更新/导入
+analyzer.py             可选的 AI 建议和流式接口兼容
+market_data/           公开行情快照及可读来源清单
+static/                页面、逐分明细、原文定位、报告下载
+test_app.py            文件、服务与 AI 接口回归
+test_scoring.py        评分、行情、稳定性与存储回归
+test_frontend.js       网页通信与报告交互回归
 ```
-
-默认仅监听本机。开发时可使用 `.venv/bin/uvicorn app:app --reload --port 5000`。
-
-需要局域网或 VPN 访问时，将 `.env` 中的 `HOST` 改为本机对应网卡的 IP，或使用 `0.0.0.0` 监听所有网卡，再通过服务器 IP 和端口访问。直接运行 `python app.py` 会读取此配置；使用 uvicorn 命令时需通过 `--host` 和 `--port` 指定地址。

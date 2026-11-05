@@ -5,8 +5,10 @@ import codecs
 import io
 import json
 import os
+import tempfile
 import unittest
 from contextlib import contextmanager
+from pathlib import Path
 from unittest.mock import patch
 
 import httpx
@@ -55,6 +57,11 @@ def parse_events(response):
 class ResumeAnalysisTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        temporary = tempfile.TemporaryDirectory()
+        cls.addClassCleanup(temporary.cleanup)
+        cache = patch.dict(os.environ, {"SCORE_CACHE_PATH": str(Path(temporary.name) / "scores.sqlite3")})
+        cache.start()
+        cls.addClassCleanup(cache.stop)
         cls.client = TestClient(app)
         cls.resume = (ROOT / "samples/resume.txt").read_text(encoding="utf-8")
         cls.job = (ROOT / "samples/job.txt").read_text(encoding="utf-8")
@@ -143,7 +150,7 @@ Python MySQL Redis Docker
         numbered = self.resume.replace("自我评价", "\n".join(f"{i}. 通过 Redis 缓存热门商品，将接口平均响应时间从 320ms 降低到 110ms。" for i in range(1, 6)) + "\n自我评价")
         self.assertEqual(local_analyze(numbered, "")["dimensions"][3]["score"], local_analyze(self.resume, "")["dimensions"][3]["score"])
         counts = "教育背景\n示例大学 本科\n专业技能\nPython\n项目经历\n开发接口服务，共支持 2025个用户。"
-        self.assertEqual(local_analyze(counts, "")["dimensions"][1]["score"], 60)
+        self.assertEqual(next(item for item in local_analyze(counts, "")["score_items"] if item["id"] == "structure.timeline")["points"], 0)
         empty_sections = local_analyze("教育背景\n专业技能\n项目经历", "")
         self.assertEqual(empty_sections["dimensions"][1]["score"], 0)
 
@@ -272,15 +279,18 @@ Led deployment using Docker and improved delivery time by 30%.
             self.assertEqual(response.json()["meta"]["model"], "test-model")
             self.assertTrue(requests[0]["stream"])
         broken = copy.deepcopy(report)
-        broken["overall_score"] = 150
+        broken["summary"] = 150
         with mock_provider(provider_events(broken)):
-            self.assertEqual(self.client.post("/api/analyze", data={"resume_text": self.resume, "job_description": self.job, "use_ai": "true"}).status_code, 502)
+            response = self.client.post("/api/analyze", data={"resume_text": self.resume, "job_description": self.job, "use_ai": "true"})
+            self.assertEqual(response.json()["advice_status"], "failed")
+            self.assertEqual(response.json()["overall_score"], report["overall_score"])
 
     def test_ai_timeout_is_actionable(self):
         with mock_provider(error=httpx.ReadTimeout("timeout")):
             response = self.client.post("/api/analyze", data={"resume_text": self.resume, "use_ai": "true"})
-        self.assertEqual(response.status_code, 502)
-        self.assertIn("超时", response.json()["detail"])
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["advice_status"], "failed")
+        self.assertIn("超时", response.json()["advice_error"])
 
     def test_stream_progress_chinese_and_final_report(self):
         report = local_analyze(self.resume, self.job)
@@ -300,14 +310,17 @@ Led deployment using Docker and improved delivery time by 30%.
         self.assertNotIn("内部推理", json.dumps(events, ensure_ascii=False))
         self.assertTrue(requests[0]["stream"])
 
-    def test_stream_disconnect_never_marks_report_complete(self):
+    def test_interrupted_ai_advice_retains_only_verified_rule_scores(self):
         report = local_analyze(self.resume, self.job)
         with mock_provider(provider_events(report, complete=False)):
             response = self.client.post("/api/analyze", data={"resume_text": self.resume, "job_description": self.job, "use_ai": "true", "stream": "true"})
         events = parse_events(response)
-        self.assertEqual(events[-1]["type"], "error")
-        self.assertIn("中断", events[-1]["message"])
-        self.assertNotIn("complete", [event["type"] for event in events])
+        self.assertEqual(events[-1]["type"], "complete")
+        final = events[-1]["report"]
+        self.assertEqual(final["source"], "local")
+        self.assertEqual(final["advice_status"], "failed")
+        self.assertIn("中断", final["advice_error"])
+        self.assertEqual(final["overall_score"], report["overall_score"])
 
     def test_extra_ai_items_do_not_reject_valid_report(self):
         report = local_analyze(self.resume, self.job)
@@ -342,7 +355,7 @@ Led deployment using Docker and improved delivery time by 30%.
         self.assertEqual(final["type"], "complete")
         self.assertEqual(final["report"]["rewrites"][0]["before"], wrapped)
 
-    def test_numeric_ai_scores_are_normalized(self):
+    def test_numeric_ai_scores_cannot_override_rule_scores(self):
         report = local_analyze(self.resume, self.job)
         report["overall_score"] = "85"
         report["job_match_score"] = 78.6
@@ -352,24 +365,26 @@ Led deployment using Docker and improved delivery time by 30%.
             response = self.client.post("/api/analyze", data={"resume_text": self.resume, "job_description": self.job, "use_ai": "true", "stream": "true"})
         final = parse_events(response)[-1]
         self.assertEqual(final["type"], "complete")
-        self.assertEqual(final["report"]["overall_score"], 72)
-        self.assertEqual(final["report"]["job_match_score"], 79)
-        self.assertEqual(final["report"]["dimensions"][0]["score"], 92)
+        baseline = local_analyze(self.resume, self.job)
+        self.assertEqual(final["report"]["overall_score"], baseline["overall_score"])
+        self.assertEqual(final["report"]["job_match_score"], baseline["job_match_score"])
+        self.assertEqual(final["report"]["dimensions"], baseline["dimensions"])
 
-    def test_ai_total_is_recomputed_and_unsupported_scores_rejected(self):
+    def test_arbitrary_ai_totals_and_dimensions_are_ignored(self):
         report = local_analyze(self.resume, self.job)
         report["overall_score"] = 99
         for dimension in report["dimensions"]:
             dimension["score"] = 50
         with mock_provider(provider_events(report)):
             response = self.client.post("/api/analyze", data={"resume_text": self.resume, "use_ai": "true"})
-        self.assertEqual(response.json()["overall_score"], 50)
+        self.assertEqual(response.json()["overall_score"], local_analyze(self.resume, "")["overall_score"])
         for invalid in (True, "NaN", "Infinity", -1, 101):
             with self.subTest(score=invalid):
                 report["dimensions"][0]["score"] = invalid
                 with mock_provider(provider_events(report)):
                     response = self.client.post("/api/analyze", data={"resume_text": self.resume, "use_ai": "true"})
-                self.assertEqual(response.status_code, 502)
+                self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json()["overall_score"], local_analyze(self.resume, "")["overall_score"])
 
     def test_non_stream_provider_and_text_blocks_are_supported(self):
         report = local_analyze(self.resume, self.job)
@@ -412,26 +427,29 @@ Led deployment using Docker and improved delivery time by 30%.
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(requests), 4)
         self.assertNotIn("max_tokens", requests[1])
-        self.assertEqual(requests[1]["max_completion_tokens"], 5000)
+        self.assertEqual(requests[1]["max_completion_tokens"], 8000)
         self.assertNotIn("temperature", requests[2])
         self.assertFalse(requests[3]["stream"])
         for status, body in ((401, "Unauthorized"), (400, "Invalid API key"), (429, "Rate limit"), (500, "Server error")):
             with self.subTest(status=status), mock_provider(body, status_code=status) as requests:
                 response = self.client.post("/api/analyze", data={"resume_text": self.resume, "use_ai": "true"})
-            self.assertEqual(response.status_code, 502)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json()["advice_status"], "failed")
             self.assertEqual(len(requests), 1)
 
-    def test_truncated_filtered_and_duplicate_dimension_reports_are_rejected(self):
+    def test_truncated_reports_rejected_and_ai_dimensions_ignored(self):
         report = local_analyze(self.resume, self.job)
         for reason in ("length", "content_filter"):
             body = json.dumps({"choices": [{"message": {"content": json.dumps(report)}, "finish_reason": reason}]})
             with self.subTest(reason=reason), mock_provider(body, content_type="application/json"):
                 response = self.client.post("/api/analyze", data={"resume_text": self.resume, "use_ai": "true"})
-            self.assertEqual(response.status_code, 502)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json()["advice_status"], "failed")
         report["dimensions"][1]["label"] = report["dimensions"][0]["label"]
         with mock_provider(provider_events(report)):
             response = self.client.post("/api/analyze", data={"resume_text": self.resume, "use_ai": "true"})
-        self.assertEqual(response.status_code, 502)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["dimensions"], local_analyze(self.resume, "")["dimensions"])
 
     def test_optional_ai_match_and_rewrites_can_be_absent(self):
         report = local_analyze(self.resume, self.job)
@@ -441,13 +459,16 @@ Led deployment using Docker and improved delivery time by 30%.
             response = self.client.post("/api/analyze", data={"resume_text": self.resume, "job_description": self.job, "use_ai": "true", "stream": "true"})
         final = parse_events(response)[-1]
         self.assertEqual(final["type"], "complete")
-        self.assertIsNone(final["report"]["job_match_score"])
+        self.assertEqual(final["report"]["job_match_score"], local_analyze(self.resume, self.job)["job_match_score"])
         self.assertEqual(final["report"]["rewrites"], [])
 
     def test_stream_upstream_error_is_visible(self):
         with mock_provider(status_code=401):
             response = self.client.post("/api/analyze", data={"resume_text": self.resume, "use_ai": "true", "stream": "true"})
-        self.assertEqual(parse_events(response)[-1]["type"], "error")
+        final = parse_events(response)[-1]
+        self.assertEqual(final["type"], "complete")
+        self.assertEqual(final["report"]["advice_status"], "failed")
+        self.assertTrue(final["report"]["advice_error"])
 
     def test_local_stream_returns_same_report(self):
         response = self.client.post("/api/analyze", data={"resume_text": self.resume, "stream": "true"})
