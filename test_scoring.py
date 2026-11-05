@@ -21,7 +21,7 @@ from test_support import model_assessment
 from test_app import mock_provider
 from app import ROOT, app
 from score_store import remember
-from scoring import VERSION, fingerprint, quote_reference, rounded
+from scoring import VERSION, evidence_catalog, fingerprint, quote_reference, rounded
 from rubric import DIMENSIONS
 from update_market import build_snapshot, market_requirements
 
@@ -101,6 +101,60 @@ class ScoringTests(unittest.TestCase):
         self.assertGreater(ref["start"], 1)
         with self.assertRaises(ValueError):
             quote_reference(text, "完全没有的原句")
+
+    def test_numbered_evidence_preserves_uploaded_text_without_model_copying(self):
+        text = self.resume.replace("数据库维护", "数据\n库维护").replace("Python", "Ｐｙｔｈｏｎ")
+        catalog = evidence_catalog(text)
+        data = model_assessment(text)
+        for item in data["score_items"]:
+            item["evidence"] = [catalog[0]["id"]] if item["points"] else []
+        report = self.prepared(text)
+        apply_scores(data, report, text, "")
+        self.assertGreater(report["overall_score"], 0)
+        for item in report["score_items"]:
+            for ref in item["evidence"]:
+                self.assertEqual(text[ref["start"]:ref["end"]], ref["quote"])
+
+    def test_numbered_job_evidence_cannot_be_used_as_resume_evidence(self):
+        data = model_assessment(self.resume, self.job)
+        job_id = evidence_catalog(self.job, "job")[0]["id"]
+        data["requirements"][0].pop("job_quote")
+        data["requirements"][0]["job_evidence"] = job_id
+        report = self.prepared(job=self.job)
+        apply_scores(data, report, self.resume, self.job)
+        self.assertEqual(report["requirements"][0]["evidence"][0]["source"], "job")
+        data["score_items"][0]["evidence"] = [job_id]
+        with self.assertRaisesRegex(ValueError, "score_items.info.email.evidence.*unknown evidence id"):
+            apply_scores(data, self.prepared(job=self.job), self.resume, self.job)
+
+    def test_catalog_bounds_long_paragraphs_without_changing_characters(self):
+        text = "😀 项目经历\n" + "使用Ｐｙｔｈｏｎ实现接口校验 " * 150
+        catalog = evidence_catalog(text)
+        self.assertGreater(len(catalog), 1)
+        self.assertEqual(len(catalog), len({ref["id"] for ref in catalog}))
+        for ref in catalog:
+            self.assertLessEqual(len(ref["quote"]), 700)
+            self.assertEqual(text[ref["start"]:ref["end"]], ref["quote"])
+
+    def test_job_evidence_accepts_one_or_multiple_original_ids(self):
+        catalog = evidence_catalog(self.job, "job")
+        for ids in ([catalog[0]["id"]], [ref["id"] for ref in catalog[:2]]):
+            data = model_assessment(self.resume, self.job)
+            data["requirements"][0].pop("job_quote")
+            data["requirements"][0]["job_evidence"] = ids
+            report = self.prepared(job=self.job)
+            apply_scores(data, report, self.resume, self.job)
+            self.assertEqual(len(report["requirements"][0]["evidence"]), len(ids))
+            for ref in report["requirements"][0]["evidence"]:
+                self.assertEqual(self.job[ref["start"]:ref["end"]], ref["quote"])
+
+    def test_integral_json_float_is_accepted_without_changing_score(self):
+        data = model_assessment(self.resume)
+        data["score_items"][0]["points"] = 1.0
+        report = self.prepared()
+        apply_scores(data, report, self.resume, "")
+        self.assertEqual(report["score_items"][0]["points"], 1)
+        self.assertIs(type(report["score_items"][0]["points"]), int)
 
     def test_ai_can_extract_non_keyword_job_requirements(self):
         job = "必备：本科毕业且具有三年工作经验。加分：持有消防执业资格。"

@@ -1,6 +1,9 @@
 """校验模型的逐项判断，并按公开权重加总；不通过关键词替模型判分。"""
 
-from scoring import SKILLS, fingerprint, quote_reference, rounded
+import math
+import re
+
+from scoring import SKILLS, evidence_catalog, fingerprint, quote_reference, rounded
 from rubric import DIMENSIONS
 
 
@@ -10,10 +13,25 @@ def explanation(value):
     return value.strip()
 
 
-def references(values, text, source="resume"):
+def reference(value, text, source, catalog, path):
+    if not isinstance(value, str):
+        raise ValueError(f"{path}: invalid evidence reference")
+    value = value.strip()
+    if value in catalog:
+        return dict(catalog[value])
+    if re.fullmatch(r"(?:resume|job)-[a-f0-9]{12}", value):
+        raise ValueError(f"{path}: unknown evidence id")
+    try:
+        return quote_reference(text, value, source)
+    except ValueError as exc:
+        raise ValueError(f"{path}: {exc}") from None
+
+
+def references(values, text, source="resume", catalog=None, path="evidence"):
     if not isinstance(values, list) or len(values) > 5:
-        raise ValueError("invalid scoring evidence")
-    return [quote_reference(text, quote, source) for quote in values]
+        raise ValueError(f"{path}: invalid scoring evidence")
+    catalog = {item["id"]: item for item in evidence_catalog(text, source)} if catalog is None else catalog
+    return [reference(value, text, source, catalog, f"{path}[{index}]") for index, value in enumerate(values)]
 
 
 def indexed(values, expected):
@@ -30,14 +48,18 @@ def indexed(values, expected):
 
 
 def apply_scores(data: dict, report: dict, text: str, job: str):
+    resume_catalog = {item["id"]: item for item in evidence_catalog(text)}
+    job_catalog = {item["id"]: item for item in evidence_catalog(job, "job")}
     scores = indexed(data.get("score_items"), report["score_items"])
     for item in report["score_items"]:
         assessed = scores[item["id"]]
         points = assessed.get("points")
+        if type(points) is float and math.isfinite(points) and points.is_integer():
+            points = int(points)
         if type(points) is not int or not 0 <= points <= item["max_points"]:
-            raise ValueError("quality points outside rubric")
+            raise ValueError(f"score_items.{item['id']}.points: quality points outside rubric")
         reason = explanation(assessed.get("reason"))
-        evidence = references(assessed.get("evidence"), text)
+        evidence = references(assessed.get("evidence"), text, catalog=resume_catalog, path=f"score_items.{item['id']}.evidence")
         if points and not evidence:
             raise ValueError("awarded quality points need resume evidence")
         item.update(points=points, evidence=evidence, observation=reason, missing=reason if points < item["max_points"] else "")
@@ -52,19 +74,26 @@ def apply_scores(data: dict, report: dict, text: str, job: str):
     if not isinstance(requirements, list) or len(requirements) > 40 or (requirements and not job):
         raise ValueError("invalid AI job requirements")
     records, seen = [], set()
-    for entry in requirements:
+    for index, entry in enumerate(requirements):
         if not isinstance(entry, dict):
             raise ValueError("invalid job requirement")
         title, reason = explanation(entry.get("title")), explanation(entry.get("reason"))
         priority, match = entry.get("priority"), entry.get("match")
         if priority not in {"必备", "加分"} or match not in {"met", "partial", "missing"}:
             raise ValueError("invalid requirement assessment")
-        job_ref = quote_reference(job, entry.get("job_quote"), "job")
-        key = fingerprint([title, job_ref["quote"]])[:12]
+        job_values = entry.get("job_evidence")
+        if job_values is None:
+            job_values = entry.get("job_quote")
+        if isinstance(job_values, str):
+            job_values = [job_values]
+        job_refs = references(job_values, job, "job", job_catalog, f"requirements[{index}].job_evidence")
+        if not job_refs:
+            raise ValueError(f"requirements[{index}].job_evidence: missing job evidence")
+        key = fingerprint([title, sorted(ref["quote"] for ref in job_refs)])[:12]
         if key in seen:
             raise ValueError("duplicate job requirement")
         seen.add(key)
-        evidence = references(entry.get("evidence"), text)
+        evidence = references(entry.get("evidence"), text, catalog=resume_catalog, path=f"requirements[{index}].evidence")
         if match != "missing" and not evidence:
             raise ValueError("matched requirement needs resume evidence")
         skills = entry.get("skills", [])
@@ -75,7 +104,7 @@ def apply_scores(data: dict, report: dict, text: str, job: str):
                         "status": {"met": "AI判断满足", "partial": "AI判断部分满足", "missing": "缺少明确证据"}[match],
                         "rule": "AI对照岗位原文判断：满足得100%，部分满足得50%，无证据得0%；必备权重3，加分权重1。",
                         "rule_version": report["meta"]["scoring_version"], "observation": reason,
-                        "missing": reason if match != "met" else "", "evidence": [job_ref], "resume_evidence": evidence,
+                        "missing": reason if match != "met" else "", "evidence": job_refs, "resume_evidence": evidence,
                         "matched": (skills or [title]) if match != "missing" else []})
     total = sum(item["weight"] for item in records)
     remaining = 100.0
@@ -96,7 +125,7 @@ def apply_scores(data: dict, report: dict, text: str, job: str):
         if match not in {"practiced", "stated", "missing"}:
             raise ValueError("invalid market assessment")
         reason = explanation(assessed.get("reason"))
-        evidence = references(assessed.get("evidence"), text)
+        evidence = references(assessed.get("evidence"), text, catalog=resume_catalog, path=f"market_items.{item['id']}.evidence")
         if match != "missing" and not evidence:
             raise ValueError("matched market skill needs resume evidence")
         item.update(points=round(item["max_points"] * {"practiced": 1, "stated": .25, "missing": 0}[match], 2),

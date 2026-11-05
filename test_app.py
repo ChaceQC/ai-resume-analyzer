@@ -20,6 +20,7 @@ from pypdf import PdfWriter
 
 from analyzer import completion_url, extract_skills
 from rubric import criteria, VERSION
+from scoring import evidence_catalog
 from test_support import model_assessment
 from app import ROOT, app, extract_text
 
@@ -263,6 +264,42 @@ class ResumeAnalysisTests(unittest.TestCase):
             response = self.client.post("/api/analyze", data={"resume_text": self.resume})
         self.assertEqual(response.status_code, 502)
         self.assertNotIn("overall_score", response.json())
+
+    def test_uploaded_docx_bad_quote_is_corrected_once_using_original_ids(self):
+        text = self.resume.replace("数据库维护", "数据\n库维护")
+        document = Document()
+        document.add_paragraph(text)
+        file = io.BytesIO()
+        document.save(file)
+        extracted = extract_text("resume.docx", file.getvalue()).strip()
+        bad = model_assessment(extracted)
+        bad["score_items"][0]["evidence"] = ["PRIVATE fabricated quote never in the uploaded file"]
+        corrected = model_assessment(extracted)
+        ref = evidence_catalog(extracted)[0]
+        for item in corrected["score_items"]:
+            item["evidence"] = [ref["id"]] if item["points"] else []
+        responses = [httpx.Response(200, content=provider_events(value), headers={"content-type": "text/event-stream"})
+                     for value in (bad, corrected)]
+        with mock_provider(responses=responses) as requests, self.assertLogs("resume_analyzer", level="WARNING") as logs:
+            response = self.client.post("/api/analyze", files={"file": ("resume.docx", file.getvalue())})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(requests), 2)
+        self.assertIn("score_items.info.email.evidence", requests[1]["messages"][-1]["content"])
+        self.assertNotIn("PRIVATE", "\n".join(logs.output))
+        report = response.json()
+        self.assertEqual(report["source"], "ai")
+        self.assertEqual(report["overall_score"], sum(item["points"] for item in corrected["score_items"]))
+        self.assertEqual(report["score_items"][0]["evidence"][0]["quote"], ref["quote"])
+
+    def test_failed_correction_is_bounded_and_never_stores_fallback_scores(self):
+        bad = model_assessment(self.resume)
+        bad["score_items"][0]["evidence"] = ["missing original quote"]
+        with mock_provider(provider_events(bad)) as requests, patch("app.remember") as remember:
+            response = self.client.post("/api/analyze", data={"resume_text": self.resume})
+        self.assertEqual(len(requests), 2)
+        self.assertEqual(response.status_code, 502)
+        self.assertNotIn("overall_score", response.json())
+        remember.assert_not_called()
 
     def test_ai_timeout_is_actionable_without_fallback(self):
         with mock_provider(error=httpx.ReadTimeout("timeout")):

@@ -32,7 +32,7 @@ MAX_FILE_BYTES = 8 * 1024 * 1024
 MAX_RESUME_CHARS = 40_000
 MAX_JOB_CHARS = 12_000
 
-app = FastAPI(title="简历透镜 · AI 简历分析", version="4.0.0",
+app = FastAPI(title="简历透镜 · AI 简历分析", version="4.0.1",
               description="上传简历或粘贴文本，由AI按严格细则评分并提供可追溯依据。")
 app.mount("/static", StaticFiles(directory=ROOT / "static"), name="static")
 

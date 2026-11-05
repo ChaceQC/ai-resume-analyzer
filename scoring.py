@@ -220,6 +220,22 @@ def prepare_report(text: str, job: str, context=None) -> dict:
                                          "model": None, "job_provided": bool(job), "scoring_version": VERSION, "scoring_source": "ai"}}
 
 
+def evidence_catalog(text: str, source="resume") -> list[dict]:
+    """给解析后的原文片段编号，模型只需返回编号，无须重抄文字。"""
+    records = []
+    for unit in source_units(text, source):
+        for offset in range(0, len(unit["quote"]), 700):
+            raw = unit["quote"][offset:offset + 700]
+            quote = raw.strip()
+            if not quote:
+                continue
+            start = unit["start"] + offset + len(raw) - len(raw.lstrip())
+            end = start + len(quote)
+            records.append({"id": source + "-" + fingerprint([start, end, quote])[:12],
+                            "source": source, "start": start, "end": end, "quote": quote})
+    return records
+
+
 def quote_reference(text: str, quote: str, source="resume") -> dict:
     if not isinstance(quote, str) or not quote.strip() or len(quote) > 2000:
         raise ValueError("invalid evidence quote")
